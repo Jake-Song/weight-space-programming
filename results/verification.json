@@ -1,0 +1,18 @@
+{
+  "verified_conditions": [
+    "base",
+    "layer15",
+    "layer19",
+    "both",
+    "nothink",
+    "random"
+  ],
+  "problems_per_condition": 100,
+  "checks": [
+    "disjoint pilot/heldout",
+    "same ordered problems",
+    "raw token lengths",
+    "termination reasons",
+    "aggregate scores"
+  ]
+}

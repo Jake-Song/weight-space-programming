@@ -1,0 +1,11 @@
+Fetching 10 files:   0%|          | 0/10 [00:00<?, ?it/s]Fetching 10 files: 100%|██████████| 10/10 [00:00<00:00, 1158.71it/s]
+model.language_model.layers.15.mlp.down_proj.weight: rebuilt (sparse, 65,260 entries changed), hash OK
+model.language_model.layers.19.mlp.down_proj.weight: rebuilt (sparse, 64,928 entries changed), hash OK
+2 tensors -> /content/weight-space/edited_tensors
+BUILT base []
+BUILT layer15 [{'name': 'model.language_model.layers.15.mlp.down_proj.weight', 'entries': 65260, 'sha256': '82e2d733ea64feaeb4af93a1e065641d3df98b494a8b7576ef2f52e90fe2ee53'}]
+BUILT layer19 [{'name': 'model.language_model.layers.19.mlp.down_proj.weight', 'entries': 64928, 'sha256': '8ef3c61bc36af113ad58e89dbb0a4a14dcba5a45cb750c15ab515c82ddd12eb2'}]
+BUILT both [{'name': 'model.language_model.layers.15.mlp.down_proj.weight', 'entries': 65260, 'sha256': '82e2d733ea64feaeb4af93a1e065641d3df98b494a8b7576ef2f52e90fe2ee53'}, {'name': 'model.language_model.layers.19.mlp.down_proj.weight', 'entries': 64928, 'sha256': '8ef3c61bc36af113ad58e89dbb0a4a14dcba5a45cb750c15ab515c82ddd12eb2'}]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Generating test split:   0%|          | 0/500 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 500/500 [00:00<00:00, 17722.61 examples/s]
+PREPARE_COMPLETE

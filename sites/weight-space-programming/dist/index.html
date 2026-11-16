@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101218">
+  <title>weight-space-programming — 3D 모델과 실험 결과</title>
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="model.css?v=combined-1">
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+  <script type="module" src="model.js?v=combined-1"></script>
+  <script src="app.js" defer></script>
+</head>
+<body class="model-page combined-page">
+  <a class="skip" href="#results">결과로 바로 가기</a>
+  <header class="topbar"><a class="brand" href="#model"><span class="brand-mark">w<span>·</span></span> weight-space-programming</a><nav aria-label="페이지 탐색"><a href="#model">3D 모델</a><a href="#results">정확도·비용</a></nav></header>
+  <main class="model-main">
+  <section id="model" aria-labelledby="model-title">
+    <div class="model-heading"><div><div class="eyebrow">MODEL ANATOMY / QWEN3.5–0.8B</div><h1 id="model-title">Qwen3.5–0.8B 레이어 구조</h1><p>24개 텍스트 레이어 중 <span class="purple-text">15</span>번과 <span class="mint-text">19</span>번의 MLP를 수정했습니다.</p></div></div>
+    <div class="model-workspace">
+      <section class="viewport-shell" aria-label="상호작용 가능한 3차원 모델">
+        <div class="viewport-top"><span><i class="tiny-dot"></i> TEXT BACKBONE</span><span><span id="view-mode">24 LAYERS / 2 EDITED</span> · <span id="zoom-readout">100%</span></span></div>
+        <div id="viewport"><div id="model-loading" role="status">3D 구조 생성 중…</div><div id="layer-tooltip" hidden></div></div>
+        <div class="viewport-legend"><span><i class="legend-square" style="background:#b3a0ff"></i> Layer 15</span><span><i class="legend-square mint-bg"></i> Layer 19</span><span><i class="legend-square gray-bg"></i> 수정 없음</span></div>
+        <div class="viewer-toolbar"><div><button id="view-reset" type="button" disabled>처음 위치로</button><button id="view-isolate" type="button" aria-pressed="false" disabled>수정 레이어만</button><button id="view-rotate" type="button" aria-pressed="false" disabled>자동 회전</button></div><label class="spacing-label">레이어 간격 <input id="layer-spacing" type="range" min="1" max="2.2" step="0.1" value="1" disabled><output id="spacing-value">1.0×</output></label></div>
+        <p class="gesture-hint">드래그: 회전 · 휠 / 두 손가락: 중심 고정 확대 · 레이어 클릭: 상세 보기</p>
+      </section>
+      <aside class="model-sidebar">
+        <section class="layer-inspector"><div class="eyebrow">LAYER INSPECTOR</div><h2 id="inspector-title">두 곳의 작은 수정.</h2><p id="inspector-summary">전체 모델을 다시 학습하지 않고, 두 레이어의 MLP down_proj 가중치만 바꿨습니다.</p><div class="edit-shortcuts"><button data-focus="15" disabled><span>15</span> LAYER <b>↗</b></button><button data-focus="19" disabled><span>19</span> LAYER <b>↗</b></button></div><dl class="inspector-facts"><div><dt id="fact-a-label">변경된 가중치 값</dt><dd id="fact-a">130,188</dd></div><div><dt id="fact-b-label">수정한 열</dt><dd id="fact-b">64 × 2</dd></div><div><dt id="fact-c-label">대상 모듈</dt><dd id="fact-c">MLP · down_proj</dd></div></dl><p id="inspector-note" class="inspector-note">작은 발광 블록 하나는 수정한 열 하나를 뜻합니다. 블록의 배치는 실제 열 인덱스와 무관한 모식도입니다.</p><code id="tensor-path">layers.{15,19}.mlp.down_proj.weight</code></section>
+        <section class="layer-picker"><div class="picker-heading"><h3>레이어 바로 선택</h3><span>0부터 시작</span></div><div id="layer-buttons" role="group" aria-label="24개 레이어 선택"></div><p>15번 = 16번째 레이어<br>19번 = 20번째 레이어</p></section>
+      </aside>
+    </div>
+  </section>
+  <section class="results-section" id="results"><div class="wrap section">
+    <div class="section-heading"><div><div class="eyebrow">RESULTS / MATH-500</div><h2>정확도와 비용을 함께 보기.</h2></div><a class="download" href="results.json" download="weight-space-results.json">결과 JSON 내려받기 <span>↓</span></a></div>
+    <div class="result-context"><span class="live-dot"></span><b>이번 실험 · MATH-500 중 별도 100문제</b><span>같은 문제 · 조건당 1회 · seed 0</span></div>
+    <div class="chart-shell">
+      <div class="chart-toolbar"><div class="segmented" role="group" aria-label="비교 지표"><button class="active" data-metric="accuracy" aria-pressed="true">정답률</button><button data-metric="cut" aria-pressed="false">토큰 한도 도달률</button><button data-metric="tokens" aria-pressed="false">평균 생성 토큰</button></div><span id="metric-hint">높을수록 좋음 ↑</span></div>
+      <div class="chart-layout"><div class="bar-chart"><div class="chart-scale"><span id="scale-label">정답률 (%)</span><span id="scale-max">100%</span></div><div id="bars" role="group" aria-label="조건별 결과, 조건을 선택하면 상세 정보가 표시됩니다"></div><div class="chart-legend"><span><i class="legend-square mint-bg"></i> 공개 수정</span><span><i class="legend-square orange-bg"></i> 설정 변경</span><span><i class="legend-square gray-bg"></i> 대조군</span><span>막대를 눌러 상세 보기</span></div></div>
+      <aside class="detail-panel" aria-live="polite"><span class="eyebrow">SELECTED CONDITION</span><h3 id="detail-title">두 레이어 수정</h3><p id="detail-description"></p><div class="detail-main"><strong id="detail-accuracy">57<span>%</span></strong><span>정답률<br><b id="detail-correct">57 / 100</b></span></div><dl><div><dt>토큰 한도 도달</dt><dd id="detail-cut">26%</dd></div><div><dt>평균 생성 토큰</dt><dd id="detail-tokens">20,638</dd></div><div><dt>반복 지표 기준 초과</dt><dd id="detail-loop">7%</dd></div></dl><p class="detail-note" id="detail-note"></p></aside></div>
+    </div>
+    <div class="compare-panel"><div class="compare-heading"><span class="eyebrow">SIDE BY SIDE</span><h3>직접 비교해 보세요.</h3><p>같은 100문제에서 두 조건을 비교합니다.</p></div><div class="compare-body"><div class="select-row"><label>기준 조건<select id="from-condition" aria-label="기준 조건"></select></label><span class="vs">→</span><label>비교 조건<select id="to-condition" aria-label="비교 조건"></select></label></div><div class="comparison-metrics" aria-live="polite"><div><span>정답률 차이</span><strong id="delta-accuracy"></strong></div><div><span>생성 토큰 비율</span><strong id="delta-tokens"></strong></div><div><span>한도 도달률 차이</span><strong id="delta-cut"></strong></div></div><p class="comparison-note" id="comparison-note" aria-live="polite"></p></div></div>
+    <details class="data-table"><summary>전체 수치 표로 보기 <span>＋</span></summary><div class="table-scroll"><table><caption class="sr-only">동일한 100문제에 대한 모든 평가 조건</caption><thead><tr><th scope="col">조건</th><th scope="col">정답률</th><th scope="col">한도 도달률</th><th scope="col">평균 토큰</th><th scope="col">반복 지표</th></tr></thead><tbody id="table-body"></tbody></table></div><p>반복 지표: 생성된 토큰 20-gram의 중복 비율이 50%를 넘는 응답 비율. 의미상 반복 전체를 판별하는 지표는 아닙니다.</p></details>
+  </div></section>
+  </main>
+</body>
+</html>

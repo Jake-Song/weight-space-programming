@@ -1,0 +1,23 @@
+{
+  "condition": "both",
+  "split": "smoke",
+  "sampling": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "presence_penalty": 1.5,
+    "max_tokens": 32768,
+    "seed": 0
+  },
+  "thinking": true,
+  "max_num_seqs": 32,
+  "versions": {
+    "vllm": "0.33.0",
+    "transformers": "5.20.2",
+    "torch": "2.14.0",
+    "math-verify": "0.9.0"
+  },
+  "dataset_sha256": "df997d7886589b8faf69518e576cf65056637be9b1299491a11b2e6bfe2fce95",
+  "samples_per_problem": 1,
+  "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5"
+}

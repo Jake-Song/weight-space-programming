@@ -1,0 +1,23 @@
+{
+  "condition": "base",
+  "split": "heldout",
+  "sampling": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "presence_penalty": 1.5,
+    "max_tokens": 32768,
+    "seed": 0
+  },
+  "thinking": true,
+  "max_num_seqs": 128,
+  "versions": {
+    "vllm": "0.33.0",
+    "transformers": "5.20.2",
+    "torch": "2.14.0",
+    "math-verify": "0.9.0"
+  },
+  "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+  "samples_per_problem": 1,
+  "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5"
+}

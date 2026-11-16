@@ -1,0 +1,19 @@
+{
+  "layers": [
+    {
+      "layer": 15,
+      "changed_columns": 64,
+      "delta_frobenius_norm": 1.748892068862915,
+      "relative_frobenius_norm": 0.10635697096586227,
+      "leading_singular_energy_fraction": 0.9999944567680359
+    },
+    {
+      "layer": 19,
+      "changed_columns": 64,
+      "delta_frobenius_norm": 1.3987594842910767,
+      "relative_frobenius_norm": 0.08105870336294174,
+      "leading_singular_energy_fraction": 0.9999914765357971
+    }
+  ],
+  "absolute_cosine_of_leading_edit_directions": 0.8490049839019775
+}

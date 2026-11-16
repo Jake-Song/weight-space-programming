@@ -1,0 +1,344 @@
+{
+  "evaluations": [
+    {
+      "condition": "base",
+      "split": "heldout",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "max_num_seqs": 128,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 100,
+      "correct": 8,
+      "accuracy": 0.08,
+      "cut_share": 0.92,
+      "loop_proxy_share": 0.88,
+      "mean_tokens": 30587.39,
+      "elapsed_seconds": 731.9282515048981
+    },
+    {
+      "condition": "both",
+      "split": "heldout",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "max_num_seqs": 128,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 100,
+      "correct": 57,
+      "accuracy": 0.57,
+      "cut_share": 0.26,
+      "loop_proxy_share": 0.07,
+      "mean_tokens": 20638.26,
+      "elapsed_seconds": 441.3702838420868
+    },
+    {
+      "condition": "layer15",
+      "split": "heldout",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "max_num_seqs": 128,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 100,
+      "correct": 41,
+      "accuracy": 0.41,
+      "cut_share": 0.42,
+      "loop_proxy_share": 0.22,
+      "mean_tokens": 22562.53,
+      "elapsed_seconds": 488.72987484931946
+    },
+    {
+      "condition": "layer19",
+      "split": "heldout",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "max_num_seqs": 128,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 100,
+      "correct": 31,
+      "accuracy": 0.31,
+      "cut_share": 0.66,
+      "loop_proxy_share": 0.62,
+      "mean_tokens": 26209.06,
+      "elapsed_seconds": 575.6741058826447
+    },
+    {
+      "condition": "nothink",
+      "split": "heldout",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": false,
+      "max_num_seqs": 128,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 100,
+      "correct": 51,
+      "accuracy": 0.51,
+      "cut_share": 0.12,
+      "loop_proxy_share": 0.05,
+      "mean_tokens": 8245.21,
+      "elapsed_seconds": 222.84973454475403
+    },
+    {
+      "condition": "random",
+      "split": "heldout",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "max_num_seqs": 128,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "a80a38dffa4d606dd6b5718ab578a6d5cc9801ff9005be9ef7d0a67349d4057b",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 100,
+      "correct": 11,
+      "accuracy": 0.11,
+      "cut_share": 0.89,
+      "loop_proxy_share": 0.86,
+      "mean_tokens": 29672.1,
+      "elapsed_seconds": 709.0819835662842
+    },
+    {
+      "condition": "base",
+      "split": "smoke",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "df997d7886589b8faf69518e576cf65056637be9b1299491a11b2e6bfe2fce95",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 20,
+      "correct": 2,
+      "accuracy": 0.1,
+      "cut_share": 0.9,
+      "loop_proxy_share": 0.9,
+      "mean_tokens": 30344.2,
+      "elapsed_seconds": 230.6804177761078
+    },
+    {
+      "condition": "both",
+      "split": "smoke",
+      "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "presence_penalty": 1.5,
+        "max_tokens": 32768,
+        "seed": 0
+      },
+      "thinking": true,
+      "max_num_seqs": 32,
+      "versions": {
+        "vllm": "0.33.0",
+        "transformers": "5.20.2",
+        "torch": "2.14.0",
+        "math-verify": "0.9.0"
+      },
+      "dataset_sha256": "df997d7886589b8faf69518e576cf65056637be9b1299491a11b2e6bfe2fce95",
+      "samples_per_problem": 1,
+      "repeat_metric": "duplicate fraction of token 20-grams; loop proxy threshold >0.5",
+      "n": 20,
+      "correct": 13,
+      "accuracy": 0.65,
+      "cut_share": 0.2,
+      "loop_proxy_share": 0.2,
+      "mean_tokens": 20203.2,
+      "elapsed_seconds": 174.58266735076904
+    }
+  ],
+  "paired_comparisons": [
+    {
+      "condition": "heldout_base_32768",
+      "accuracy_difference": 0.0,
+      "paired_bootstrap_95_interval": [
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "condition": "heldout_both_32768",
+      "accuracy_difference": 0.49,
+      "paired_bootstrap_95_interval": [
+        0.39,
+        0.59
+      ]
+    },
+    {
+      "condition": "heldout_layer15_32768",
+      "accuracy_difference": 0.33,
+      "paired_bootstrap_95_interval": [
+        0.23,
+        0.43
+      ]
+    },
+    {
+      "condition": "heldout_layer19_32768",
+      "accuracy_difference": 0.23,
+      "paired_bootstrap_95_interval": [
+        0.14,
+        0.32
+      ]
+    },
+    {
+      "condition": "heldout_nothink_32768",
+      "accuracy_difference": 0.43,
+      "paired_bootstrap_95_interval": [
+        0.33,
+        0.53
+      ]
+    },
+    {
+      "condition": "heldout_random_32768",
+      "accuracy_difference": 0.03,
+      "paired_bootstrap_95_interval": [
+        -0.03,
+        0.09
+      ]
+    }
+  ],
+  "interaction": {
+    "contrast": "both - layer15 - layer19 + base (accuracy scale)",
+    "estimate": -0.07,
+    "paired_bootstrap_95_interval": [
+      -0.19,
+      0.05
+    ],
+    "note": "Exploratory, single generation per problem; not corrected for multiple comparisons."
+  },
+  "direct_comparisons": [
+    {
+      "contrast": "both - layer15",
+      "estimate": 0.16,
+      "wrong_to_right": 18,
+      "right_to_wrong": 2,
+      "paired_bootstrap_95_interval": [
+        0.08,
+        0.24
+      ]
+    },
+    {
+      "contrast": "both - layer19",
+      "estimate": 0.26,
+      "wrong_to_right": 28,
+      "right_to_wrong": 2,
+      "paired_bootstrap_95_interval": [
+        0.17,
+        0.35
+      ]
+    },
+    {
+      "contrast": "both - nothink",
+      "estimate": 0.06,
+      "wrong_to_right": 14,
+      "right_to_wrong": 8,
+      "paired_bootstrap_95_interval": [
+        -0.03,
+        0.15
+      ]
+    },
+    {
+      "contrast": "both - random",
+      "estimate": 0.46,
+      "wrong_to_right": 46,
+      "right_to_wrong": 0,
+      "paired_bootstrap_95_interval": [
+        0.37,
+        0.56
+      ]
+    }
+  ]
+}

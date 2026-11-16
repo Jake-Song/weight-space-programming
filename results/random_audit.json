@@ -1,0 +1,14 @@
+[
+  {
+    "name": "model.language_model.layers.15.mlp.down_proj.weight",
+    "published_norm": 1.748892068862915,
+    "random_actual_norm": 1.7489365339279175,
+    "columns": 64
+  },
+  {
+    "name": "model.language_model.layers.19.mlp.down_proj.weight",
+    "published_norm": 1.3987594842910767,
+    "random_actual_norm": 1.3987627029418945,
+    "columns": 64
+  }
+]

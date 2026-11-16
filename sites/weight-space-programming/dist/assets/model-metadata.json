@@ -1,0 +1,59 @@
+{
+  "generator": "JavaScript / Three.js",
+  "model": "Qwen/Qwen3.5-0.8B",
+  "revision": "2fc06364715b967f1860aea9cf38778875588b17",
+  "scope": "Text backbone; schematic geometry, not activation or weight magnitudes",
+  "indexing": "zero-based",
+  "layout": "horizontal",
+  "layers": 24,
+  "hiddenSize": 1024,
+  "intermediateSize": 3584,
+  "attentionTypes": [
+    "linear_attention",
+    "linear_attention",
+    "linear_attention",
+    "full_attention",
+    "linear_attention",
+    "linear_attention",
+    "linear_attention",
+    "full_attention",
+    "linear_attention",
+    "linear_attention",
+    "linear_attention",
+    "full_attention",
+    "linear_attention",
+    "linear_attention",
+    "linear_attention",
+    "full_attention",
+    "linear_attention",
+    "linear_attention",
+    "linear_attention",
+    "full_attention",
+    "linear_attention",
+    "linear_attention",
+    "linear_attention",
+    "full_attention"
+  ],
+  "edits": [
+    {
+      "layer": 15,
+      "columns": 64,
+      "changedValues": 65260,
+      "tensor": "model.language_model.layers.15.mlp.down_proj.weight",
+      "shape": [
+        1024,
+        3584
+      ]
+    },
+    {
+      "layer": 19,
+      "columns": 64,
+      "changedValues": 64928,
+      "tensor": "model.language_model.layers.19.mlp.down_proj.weight",
+      "shape": [
+        1024,
+        3584
+      ]
+    }
+  ]
+}
