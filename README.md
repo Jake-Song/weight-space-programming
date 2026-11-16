@@ -121,3 +121,9 @@ A persistent CPU sandbox and budgeted GPU experiment runner are in
 10/25/50 practice forward passes and final full MATH-500 (4 samples) / GSM8K
 (2 samples) evaluation. See that guide for setup, commands, isolation checks and
 the differences from the complete published harness.
+
+
+The runner supports checkpoints, pause/resume, portable backups and persistent
+hypothesis/result links. `python3 experiments/agent.py --steps 3` runs up to three
+headless Astra(max) actions and continues from the saved experiment on its next
+invocation. See [중단한 실험 이어가기](experiments/README.md#중단한-실험-이어가기).

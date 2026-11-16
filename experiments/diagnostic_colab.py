@@ -3,6 +3,7 @@ No benchmark scores or published edits are shown to the editor. No local sandbox
 forward budget is spent: this is a separately recorded infrastructure pilot.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -74,6 +75,24 @@ def verified_report(folder):
     return report
 
 
+def finish_pilot(folder, meta):
+    timing = json.loads((folder/'artifacts/timing.json').read_text())
+    scores = json.loads((folder / 'artifacts/output/scores.json').read_text())
+    records = [json.loads(line) for line in (folder / 'artifacts/output/original.jsonl').read_text().split(chr(10)) if line.strip()]
+    observations = []
+    for row in records:
+        tokens = row['token_ids']
+        grams = [tuple(tokens[i:i+20]) for i in range(max(0, len(tokens)-19))]
+        repeat = 1 - len(set(grams))/len(grams) if grams else 0
+        observations.append(dict(id=row['id'], finish_reason=row['finish_reason'], tokens=len(tokens),
+                                 duplicate_20gram_fraction=repeat, excerpt=row['text'][-500:]))
+    (folder / 'observations.json').write_text(json.dumps(observations, indent=2))
+    report = json.loads((folder/'verified_report.json').read_text()) if (folder/'verified_report.json').exists() else verified_report(folder)
+    meta.update(completed=time.time(), elapsed_seconds=timing['elapsed_seconds'], scores=scores)
+    (folder / 'pilot.json').write_text(json.dumps(meta, indent=2))
+    print(json.dumps(dict(scores=scores,timing=timing,report=report,folder=str(folder)),ensure_ascii=False,indent=2),flush=True)
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--session', default='wsp-diagnostic')
@@ -86,10 +105,24 @@ def main():
     if a.report_only:
         verified_report(folder)
         return
-    meta = dict(session=a.session, editor_model=MODEL, reasoning_effort=EFFORT,
-                started=time.time(), protocol='independent baseline diagnostic; not a 50-pass edit run',
-                sampling=dict(temperature=.6, top_p=.95, top_k=20, presence_penalty=1.5, max_tokens=32768))
-    (folder / 'pilot.json').write_text(json.dumps(meta, indent=2))
+    metadata_file = folder / 'pilot.json'
+    meta = json.loads(metadata_file.read_text()) if metadata_file.exists() else dict(
+        session=a.session, editor_model=MODEL, reasoning_effort=EFFORT,
+        started=time.time(), protocol='independent baseline diagnostic; not a 50-pass edit run',
+        sampling=dict(temperature=.6, top_p=.95, top_k=20, presence_penalty=1.5, max_tokens=32768))
+    if meta.get('completed'):
+        print(json.dumps(meta, ensure_ascii=False, indent=2))
+        return
+    timing_file = folder / 'artifacts/timing.json'
+    if timing_file.exists() and json.loads(timing_file.read_text())['returncode'] == 0:
+        # GPU results survived: finish locally even after the Colab VM has gone away.
+        finish_pilot(folder, meta)
+        return
+    worker_hash = hashlib.sha256((REPO/'experiments/worker.py').read_bytes()).hexdigest()
+    if meta.get('worker_sha256', worker_hash) != worker_hash:
+        raise ValueError('Worker changed during an unfinished pilot; restore its original source or choose a new output folder')
+    meta.update(session=a.session, worker_sha256=worker_hash)
+    metadata_file.write_text(json.dumps(meta, indent=2))
     print('PILOT', folder, flush=True)
     if not a.skip_setup:
         remote(a.session, (REPO / 'scripts/setup_colab.py').read_text(), folder, 'setup')
@@ -121,7 +154,7 @@ print('ASSETS_READY',len(rows),flush=True)
     pool = json.loads((folder / 'practice_pool.json').read_text())
     selection = obj(dict(hypothesis={'type': 'string'}, explanation={'type': 'string'},
                          problems={'type': 'array', 'items': {'type': 'string', 'enum': [r['id'] for r in pool]}}))
-    plan = astra('You are the experiment editor. Do not use tools. Plan ONE small baseline diagnostic before a weight-editing experiment. '
+    plan = json.loads((folder/'plan.json').read_text()) if (folder/'plan.json').exists() and (folder/'plan.json').stat().st_size else astra('You are the experiment editor. Do not use tools. Plan ONE small baseline diagnostic before a weight-editing experiment. '
         'Choose exactly 8 distinct practice IDs from the pool, four GSM8K and four MATH. No edits yet. '
         'The original Qwen3.5-0.8B will answer with thinking enabled, temperature .6, top_p .95, top_k20, presence penalty1.5, '
         '32768 tokens, one sample per problem. State a falsifiable diagnostic hypothesis about completion, accuracy and repetition. '
@@ -135,7 +168,9 @@ print('ASSETS_READY',len(rows),flush=True)
     request = dict(type='generate', model='original', problems=ids, n=1, max_tokens=32768)
     (folder / 'request.json').write_text(json.dumps(request, indent=2))
     print('HYPOTHESIS', plan['hypothesis'], flush=True)
-    remote_root = '/content/wsp-diagnostic/pilot-' + folder.name + '-' + uuid.uuid4().hex[:8]
+    remote_root = meta.get('remote_root') or '/content/wsp-diagnostic/pilot-' + uuid.uuid4().hex[:16]
+    meta['remote_root'] = remote_root
+    metadata_file.write_text(json.dumps(meta, indent=2))
     remote(a.session, f"from pathlib import Path\nPath({remote_root!r}).mkdir(exist_ok=True)\n", folder, 'job')
     call(['colab', 'upload', '-s', a.session, folder / 'request.json', remote_root + '/request.json'])
     remote(a.session, f'''
@@ -145,6 +180,9 @@ job=Path({remote_root!r})
 (job/'edits').mkdir(exist_ok=True)
 started=time.time()
 env=dict(os.environ,WSP_ASSETS='/content/wsp-diagnostic/assets',WSP_JOB=str(job),VLLM_ENABLE_V1_MULTIPROCESSING='1')
+if (job/'worker.log').exists():
+    import uuid
+    (job/'worker.log').rename(job/('worker.attempt-'+uuid.uuid4().hex[:8]+'.log'))
 with (job/'worker.log').open('w') as log:
     result=subprocess.run([sys.executable,'/content/wsp-diagnostic/worker.py','run'],env=env,stdout=log,stderr=subprocess.STDOUT)
 (job/'timing.json').write_text(json.dumps(dict(elapsed_seconds=time.time()-started,returncode=result.returncode)))
@@ -162,20 +200,7 @@ print((job/'worker.log').read_text()[-6000:],flush=True)
     timing = json.loads((folder / 'artifacts/timing.json').read_text())
     if timing['returncode']:
         raise RuntimeError(f'GPU worker failed; inspect {folder}/artifacts/worker.log')
-    scores = json.loads((folder / 'artifacts/output/scores.json').read_text())
-    records = [json.loads(line) for line in (folder / 'artifacts/output/original.jsonl').read_text().split(chr(10)) if line.strip()]
-    observations = []
-    for row in records:
-        tokens = row['token_ids']
-        grams = [tuple(tokens[i:i+20]) for i in range(max(0, len(tokens)-19))]
-        repeat = 1 - len(set(grams))/len(grams) if grams else 0
-        observations.append(dict(id=row['id'], finish_reason=row['finish_reason'], tokens=len(tokens),
-                                 duplicate_20gram_fraction=repeat, excerpt=row['text'][-500:]))
-    (folder / 'observations.json').write_text(json.dumps(observations, indent=2))
-    report = verified_report(folder)
-    meta.update(completed=time.time(), elapsed_seconds=timing['elapsed_seconds'], scores=scores)
-    (folder / 'pilot.json').write_text(json.dumps(meta, indent=2))
-    print(json.dumps(dict(scores=scores,timing=timing,report=report,folder=str(folder)),ensure_ascii=False,indent=2),flush=True)
+    finish_pilot(folder, meta)
 
 
 if __name__ == '__main__':

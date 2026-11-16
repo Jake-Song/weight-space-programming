@@ -17,7 +17,10 @@ URL = f'https://raw.githubusercontent.com/RikiyaT/lm_understand-logs/{SOURCE}/ex
 
 
 def write(path, obj):
-    Path(path).write_text(json.dumps(obj, indent=2))
+    path = Path(path)
+    temporary = path.with_name(path.name + '.tmp')
+    temporary.write_text(json.dumps(obj, indent=2))
+    temporary.replace(path)
 
 
 def digest(path):
@@ -36,6 +39,22 @@ def prepare():
     from huggingface_hub import snapshot_download
     from datasets import load_dataset
     model = ASSETS / 'model'
+    manifest_path = ASSETS / 'manifest.json'
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text())
+        if manifest['model_revision'] != REVISION or manifest['source_commit'] != SOURCE:
+            raise ValueError('Existing assets belong to another protocol')
+        missing = [rel for rel in manifest['files'] if not (ASSETS / rel).exists()]
+        if any(not rel.startswith('model/') or not rel.endswith('.safetensors') for rel in missing):
+            raise ValueError('Non-weight assets are missing; restore the original bundle instead of silently replacing datasets')
+        if missing:
+            snapshot_download('Qwen/Qwen3.5-0.8B', revision=REVISION, local_dir=model,
+                              allow_patterns=[Path(rel).name for rel in missing])
+        for rel, expected in manifest['files'].items():
+            if digest(ASSETS / rel) != expected:
+                raise ValueError(f'Existing asset changed: {rel}')
+        print('ASSETS_ALREADY_VERIFIED', flush=True)
+        return
     snapshot_download('Qwen/Qwen3.5-0.8B', revision=REVISION, local_dir=model,
                       allow_patterns=['*.json', '*.jinja', '*.safetensors', 'tokenizer*', 'vocab*', 'merges*'])
     practice = ASSETS / 'practice'
@@ -115,8 +134,6 @@ def item_seed(identity):
 
 def generate(req, ckpt, model):
     import mathqa as Q
-    from transformers import AutoTokenizer
-    from vllm import LLM, SamplingParams
     n = req.get('n', 1)
     if req.get('benchmark'):
         rows = jsonl(ASSETS / 'bench' / (req['benchmark'] + '.jsonl'))
@@ -124,33 +141,47 @@ def generate(req, ckpt, model):
         practice = {r['id']: r for p in (ASSETS / 'practice').glob('*.jsonl') for r in jsonl(p)}
         rows = [practice[x] for x in req.get('problems', [])]
         rows += [dict(id=f'custom_{i}', prompt=p, answer=None) for i, p in enumerate(req.get('prompts', []))]
-    tok = AutoTokenizer.from_pretrained(ckpt, local_files_only=True)
-    prompts = [tok.apply_chat_template([dict(role='user', content=r.get('prompt') or Q.build_prompt(r['problem']))],
-               tokenize=False, add_generation_prompt=True, enable_thinking=True) for r in rows]
     sampling = dict(temperature=.6, top_p=.95, top_k=20, presence_penalty=1.5,
                     max_tokens=req.get('max_tokens', 32768), n=n)
-    init_started = time.perf_counter()
-    llm = LLM(model=str(ckpt), dtype='bfloat16', gpu_memory_utilization=.85,
-              max_model_len=sampling['max_tokens'] + 2048, max_num_seqs=64, seed=0,
-              generation_config='vllm', limit_mm_per_prompt={'image': 0, 'video': 0}, language_model_only=True)
-    params = [SamplingParams(**sampling, seed=item_seed(r['id'])) for r in rows]
-    initialization_seconds = time.perf_counter() - init_started
-    generate_started = time.perf_counter()
-    outputs = llm.generate(prompts, params)
-    generation_seconds = time.perf_counter() - generate_started
-    if len(outputs) != len(rows):
-        raise RuntimeError('Incomplete batch')
     raw = JOB / f'output/{model}.jsonl'
-    # Persist all raw responses before calling the symbolic grader.
-    with raw.open('w') as f:
-        for row, output in zip(rows, outputs):
-            if len(output.outputs) != n:
-                raise RuntimeError('Missing samples')
-            for i, sample in enumerate(output.outputs):
-                if sample.finish_reason not in ('stop', 'length'):
-                    raise RuntimeError('Incomplete generation')
-                f.write(json.dumps(dict(row, sample=i, text=sample.text, token_ids=list(sample.token_ids),
-                                        finish_reason=sample.finish_reason)) + '\n')
+    receipt = JOB / f'output/{model}_raw.json'
+    if receipt.exists():
+        cached = json.loads(receipt.read_text())
+        if not raw.exists() or digest(raw) != cached['sha256']:
+            raise ValueError('Saved raw generations changed; refuse a silent rerun')
+        initialization_seconds = cached['initialization_seconds']
+        generation_seconds = cached['generation_seconds']
+    else:
+        from transformers import AutoTokenizer
+        from vllm import LLM, SamplingParams
+        tok = AutoTokenizer.from_pretrained(ckpt, local_files_only=True)
+        prompts = [tok.apply_chat_template([dict(role='user', content=r.get('prompt') or Q.build_prompt(r['problem']))],
+                   tokenize=False, add_generation_prompt=True, enable_thinking=True) for r in rows]
+        init_started = time.perf_counter()
+        llm = LLM(model=str(ckpt), dtype='bfloat16', gpu_memory_utilization=.85,
+                  max_model_len=sampling['max_tokens'] + 2048, max_num_seqs=64, seed=0,
+                  generation_config='vllm', limit_mm_per_prompt={'image': 0, 'video': 0}, language_model_only=True)
+        params = [SamplingParams(**sampling, seed=item_seed(r['id'])) for r in rows]
+        initialization_seconds = time.perf_counter() - init_started
+        generate_started = time.perf_counter()
+        outputs = llm.generate(prompts, params)
+        generation_seconds = time.perf_counter() - generate_started
+        if len(outputs) != len(rows):
+            raise RuntimeError('Incomplete batch')
+        temporary = raw.with_suffix('.tmp')
+        # Atomically publish raw responses before calling the symbolic grader.
+        with temporary.open('w') as f:
+            for row, output in zip(rows, outputs):
+                if len(output.outputs) != n:
+                    raise RuntimeError('Missing samples')
+                for i, sample in enumerate(output.outputs):
+                    if sample.finish_reason not in ('stop', 'length'):
+                        raise RuntimeError('Incomplete generation')
+                    f.write(json.dumps(dict(row, sample=i, text=sample.text, token_ids=list(sample.token_ids),
+                                            finish_reason=sample.finish_reason)) + '\n')
+        temporary.replace(raw)
+        write(receipt, dict(sha256=digest(raw), initialization_seconds=initialization_seconds,
+                            generation_seconds=generation_seconds))
     correct = cut = tokens = graded = 0
     per = []
     for row in jsonl(raw):
@@ -225,20 +256,51 @@ def teacher_forced(req, ckpt):
                 alignment='logprobs[j] predicts input token j+1; hidden/MLP arrays include all input tokens')
 
 
+def identity():
+    return dict(request_sha256=digest(JOB / 'request.json'),
+                asset_manifest_sha256=digest(ASSETS / 'manifest.json'),
+                edits={p.name: digest(p) for p in sorted((JOB / 'edits').glob('*.npy'))},
+                worker_sha256=digest(__file__))
+
+
+def arm_complete(model):
+    receipt = JOB / f'output/{model}_complete.json'
+    if not receipt.exists():
+        return False
+    for name, expected in json.loads(receipt.read_text()).items():
+        if digest(JOB / 'output' / name) != expected:
+            raise ValueError(f'Saved arm output changed: {name}')
+    return True
+
+
+def finish_arm(model):
+    paths = [p for p in (JOB / 'output').iterdir() if p.is_file() and
+             (p.name.startswith(model + '_') or p.name == model + '.jsonl' or
+              p.suffix == '.npy' or p.name == 'edit_audit.json') and
+             p.name != model + '_complete.json' and not p.name.endswith('.tmp')]
+    write(JOB / f'output/{model}_complete.json', {p.name: digest(p) for p in paths})
+
+
 def run():
     req = json.loads((JOB / 'request.json').read_text())
-    (JOB / 'output').mkdir()
+    expected = identity()
+    identity_file = JOB / 'input_identity.json'
+    if identity_file.exists() and json.loads(identity_file.read_text()) != expected:
+        raise ValueError('Request, edits, data or worker changed; use a new job ID')
+    write(identity_file, expected)
+    (JOB / 'output').mkdir(exist_ok=True)
     manifest = json.loads((ASSETS / 'manifest.json').read_text())
-    # Detect changed models/data before consuming a forward pass or evaluating.
-    for rel, expected in manifest['files'].items():
-        if digest(ASSETS / rel) != expected:
+    for rel, checksum in manifest['files'].items():
+        if digest(ASSETS / rel) != checksum:
             raise ValueError(f'Asset changed: {rel}')
     summaries = {}
     models = ('original', 'edited') if req.get('model') == 'both' else (req.get('model', 'edited'),)
-    # vLLM process must exit before creating the next engine. Use fresh child per arm.
     for model in models:
         import subprocess
-        subprocess.run([sys.executable, __file__, 'arm', model], check=True)
+        if not arm_complete(model):
+            subprocess.run([sys.executable, __file__, 'arm', model], check=True)
+        if not arm_complete(model):
+            raise RuntimeError('Arm did not finish atomically')
         summaries[model] = json.loads((JOB / f'output/{model}_scores.json').read_text())
     if len(models) == 2:
         import statistics
@@ -259,7 +321,8 @@ def run():
             independent_units='problems; samples averaged within problem')
     write(JOB / 'output/scores.json', summaries)
     write(JOB / 'output/provenance.json', dict(request=req, source_commit=SOURCE,
-          model_revision=REVISION, asset_manifest_sha256=digest(ASSETS / 'manifest.json'),
+          model_revision=REVISION, input_identity=expected,
+          asset_manifest_sha256=digest(ASSETS / 'manifest.json'),
           versions={p: importlib.metadata.version(p) for p in
                     ['torch', 'vllm', 'transformers', 'datasets', 'safetensors', 'math-verify']}))
 
@@ -270,10 +333,14 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'arm':
         req = json.loads((JOB / 'request.json').read_text())
         model = sys.argv[2]
-        ckpt = checkpoint(model)
-        if req['type'] == 'generate':
-            generate(req, ckpt, model)
-        else:
-            write(JOB / f'output/{model}_scores.json', teacher_forced(req, ckpt))
+        if not arm_complete(model):
+            # If raw responses survived a grading crash, avoid rebuilding the model.
+            raw_saved = (JOB / f'output/{model}_raw.json').exists()
+            ckpt = ASSETS / 'model' if raw_saved else checkpoint(model)
+            if req['type'] == 'generate':
+                generate(req, ckpt, model)
+            else:
+                write(JOB / f'output/{model}_scores.json', teacher_forced(req, ckpt))
+            finish_arm(model)
     else:
         run()

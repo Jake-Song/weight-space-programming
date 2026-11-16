@@ -93,6 +93,7 @@ class Lifecycle(unittest.TestCase):
         def success(root, state, job):
             (job / 'output').mkdir()
             R.write(job / 'output/provenance.json', {'complete': True})
+            R.write(job / 'output/scores.json', {})
 
         with patch.object(R, 'gpu_job', side_effect=success):
             self.cli('forward', self.request)
@@ -108,6 +109,8 @@ class Lifecycle(unittest.TestCase):
             job = self.root / f'jobs/forward-{i}/output'
             job.mkdir(parents=True)
             R.write(job / 'provenance.json', {})
+            R.write(job / 'scores.json', {})
+            R.write(job.parent / 'request.json', {'type': 'generate', 'problems': ['train:1']})
         with patch.object(R, 'gpu_job') as gpu:
             with self.assertRaises(ValueError):
                 self.cli('forward', self.request)

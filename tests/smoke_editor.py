@@ -61,6 +61,15 @@ Tokenizer(models.WordLevel({'[UNK]':0}, unk_token='[UNK]')).save('/fixture/token
             assert cfg['HostConfig']['NetworkMode'] == 'none'
             assert cfg['HostConfig']['ReadonlyRootfs']
             assert not cfg['HostConfig']['DeviceRequests']
+            # Reconnect the same action after a real kernel/container restart.
+            message = json.dumps(dict(execution_id='restart-check', code=f"w=load('{tensor}')\nw[0,0]+=1\nsave_edit('{tensor}',w)\nprint(w[0,0].item())"))
+            first = execute(message)
+            assert first['ok'] and first['output'].strip() == '3.0'
+            R.stop_editor(state)
+            R.editor_start(root, state)
+            assert execute(message) == first
+            assert execute(f"load('{tensor}')[0,0].item()")['output'].strip() == '3.0'
+            print('PASS: action receipt and edited tensor survive container restart without double applying code')
             # The trusted worker must reject files written around save_edit too.
             (root / 'job/edits').mkdir(parents=True)
             (root / 'job/output').mkdir()

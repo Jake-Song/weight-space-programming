@@ -1,6 +1,8 @@
 """Persistent CPU notebook, accessible only through docker exec (no network)."""
 import ast
 import contextlib
+import hashlib
+import re
 import io
 import json
 from pathlib import Path
@@ -57,6 +59,57 @@ def namespace():
                 tok=Tokenizer.from_file('/model/tokenizer.json'), np=np, torch=torch)
 
 
+def execute(code, env):
+    output = io.StringIO()
+    ok = True
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+        try:
+            tree = ast.parse(code)
+            last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
+            exec(compile(tree, '<editor>', 'exec'), env)
+            if last:
+                value = eval(compile(ast.Expression(last.value), '<editor>', 'eval'), env)
+                if value is not None:
+                    print(repr(value))
+        except BaseException:
+            ok = False
+            traceback.print_exc()
+    return {'ok': ok, 'output': output.getvalue()[-10000:]}
+
+
+def dispatch(payload, env, receipts=Path('/work/.executions')):
+    # Plain code remains compatible with the original smoke test/client.
+    try:
+        message = json.loads(payload)
+    except ValueError:
+        return execute(payload, env)
+    if not isinstance(message, dict) or set(message) != {'execution_id', 'code'}:
+        return execute(payload, env)
+    identity, code = message['execution_id'], message['code']
+    if not isinstance(identity, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,79}', identity):
+        return {'ok': False, 'output': 'Invalid execution ID'}
+    receipts.mkdir(exist_ok=True)
+    path = receipts / (identity + '.json')
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    if path.exists():
+        record = json.loads(path.read_text())
+        if record['code_sha256'] != code_hash:
+            return {'ok': False, 'output': 'Execution ID conflict'}
+        if record['status'] == 'complete':
+            return dict(record['result'], execution_id=identity, code_sha256=code_hash)
+        return {'ok': False, 'uncertain': True, 'output': 'Previous execution was interrupted; partial changes may exist'}
+
+    def store(record):
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(record))
+        temporary.replace(path)
+
+    store(dict(status='running', code_sha256=code_hash))
+    result = dict(execute(code, env), execution_id=identity, code_sha256=code_hash)
+    store(dict(status='complete', code_sha256=code_hash, result=result))
+    return result
+
+
 def serve():
     env = namespace()
     sock = socket.socket(socket.AF_UNIX)
@@ -68,22 +121,11 @@ def serve():
             chunks = []
             while chunk := conn.recv(65536):
                 chunks.append(chunk)
-            code = b''.join(chunks).decode()
-            output = io.StringIO()
-            ok = True
-            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-                try:
-                    tree = ast.parse(code)
-                    last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
-                    exec(compile(tree, '<editor>', 'exec'), env)
-                    if last:
-                        value = eval(compile(ast.Expression(last.value), '<editor>', 'eval'), env)
-                        if value is not None:
-                            print(repr(value))
-                except BaseException:
-                    ok = False
-                    traceback.print_exc()
-            conn.sendall(json.dumps({'ok': ok, 'output': output.getvalue()[-10000:]}).encode())
+            try:
+                result = dispatch(b''.join(chunks).decode(), env)
+            except BaseException:
+                result = {'ok': False, 'output': traceback.format_exc()[-10000:]}
+            conn.sendall(json.dumps(result).encode())
 
 
 def client():
