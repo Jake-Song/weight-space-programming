@@ -1,0 +1,8 @@
+{
+  "type": "generate",
+  "model": "both",
+  "problems": [],
+  "prompts": ["What is 17 multiplied by 23? Please reason step by step, and put your final answer within \\boxed{}."],
+  "n": 1,
+  "max_tokens": 32768
+}

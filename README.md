@@ -113,3 +113,11 @@ additional exploratory random-direction control. It uses the same edited
 columns and matches per-column update norms before BF16 rounding, with a random
 rank-one direction and random signs (seed 20261116). Actual update norms are
 recorded. One random seed is a limited control, not a distributional comparison.
+
+## New weight-editing experiments
+
+A persistent CPU sandbox and budgeted GPU experiment runner are in
+[`experiments/`](experiments/README.md). They support new direct weight edits,
+10/25/50 practice forward passes and final full MATH-500 (4 samples) / GSM8K
+(2 samples) evaluation. See that guide for setup, commands, isolation checks and
+the differences from the complete published harness.
