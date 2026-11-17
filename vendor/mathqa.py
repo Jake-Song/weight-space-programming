@@ -33,10 +33,6 @@ import re
 import sys
 import threading
 
-try:   # the multiple-choice task's loop signals (its repetitive_end rule is reused below)
-    from weightenv.lmo.tasks.mcqa import loop_signals as mcqa_loop_signals
-except ImportError:  # run as a script by path (the worker)
-    from mcqa import loop_signals as mcqa_loop_signals
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SCRATCH = os.environ.get("MATH_SCRATCH", "<data>/math")

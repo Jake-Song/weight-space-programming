@@ -3,7 +3,3 @@
 !experiments/**
 !vendor/
 !vendor/mathqa.py
-!results/
-!results/vendor/
-!results/vendor/code/
-!results/vendor/code/mathqa.py

@@ -155,7 +155,7 @@ def setup(root, session):
         call('colab', 'ssh', '-s', session, '--', 'mkdir', '-p', base)
         for src, target in [('experiments/worker.py', 'worker.py'),
                             ('experiments/colab_backend.py', 'colab_backend.py'),
-                            ('results/vendor/code/mathqa.py', 'mathqa.py'),
+                            ('vendor/mathqa.py', 'mathqa.py'),
                             ('scripts/setup_colab.py', 'setup.py')]:
             call('colab', 'upload', '-s', session, R.REPO / src, base + '/' + target)
         call('colab', 'ssh', '-s', session, '--', 'python3', base + '/setup.py')

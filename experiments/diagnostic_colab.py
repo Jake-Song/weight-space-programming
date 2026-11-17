@@ -128,7 +128,7 @@ def main():
         remote(a.session, (REPO / 'scripts/setup_colab.py').read_text(), folder, 'setup')
     remote(a.session, "from pathlib import Path\nPath('/content/wsp-diagnostic').mkdir(exist_ok=True)\n", folder, 'mkdir')
     for src, dst in [(REPO / 'experiments/worker.py', 'worker.py'),
-                     (REPO / 'results/vendor/code/mathqa.py', 'mathqa.py')]:
+                     (REPO / 'vendor/mathqa.py', 'mathqa.py')]:
         call(['colab', 'upload', '-s', a.session, src, '/content/wsp-diagnostic/' + dst])
     remote(a.session, '''
 import os, subprocess, sys

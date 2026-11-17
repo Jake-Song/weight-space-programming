@@ -17,6 +17,13 @@ not select or preload the published edit.
 
 ## Setup
 
+The grader is vendored at `vendor/mathqa.py` and is used by both Colab uploads
+and the GPU Docker image. `vendor/mathqa.original.py` preserves its upstream
+source at commit `4d09ba6d6a7e891dd8063974dfe81b3d78e3494f`; the runtime copy
+removes only the unavailable `mcqa` loop-detector import, leaving prompting,
+answer extraction and grading unchanged. Experiment execution does not require
+the historical `results/` directory.
+
 Requires Linux, Python 3.12+, Docker, NVIDIA Container Toolkit and an NVIDIA GPU
 for forward passes. The prior pilot used an A100 40 GB. The editor has a 96 GiB
 memory cap and 2 CPUs; its kernel initialization and code execute without a GPU.
