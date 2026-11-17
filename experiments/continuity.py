@@ -289,7 +289,7 @@ def export_bundle(root, destination, include_weights=False):
             continue
         entries[str(rel)] = digest(p)
     temporary = destination.with_name(destination.name + '.tmp-' + uuid.uuid4().hex)
-    with tarfile.open(temporary, 'w:gz') as archive:
+    with tarfile.open(temporary, 'w:gz', compresslevel=1) as archive:
         for rel in entries:
             # Add regular files explicitly; never follow directory recursion or links.
             info = archive.gettarinfo(str(root / rel), arcname=rel)

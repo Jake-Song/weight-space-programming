@@ -1,0 +1,297 @@
+{
+  "date": "2026-11-17",
+  "actions": 10,
+  "gpu_calls": 3,
+  "python_calls": 7,
+  "python_errors": 1,
+  "weight_edits": 0,
+  "baseline": {
+    "problems": 6,
+    "correct": 0,
+    "cut_share": 1,
+    "max_tokens": 32768,
+    "repeated_32gram_range": [
+      0.8133915752817913,
+      0.9377768274429544
+    ]
+  },
+  "candidates": [
+    {
+      "layer": 10,
+      "channels": [
+        338,
+        397,
+        525
+      ],
+      "ratios": [
+        1.6914562265354036,
+        1.19293763998708,
+        1.4026032984774268,
+        1.5868152076743671
+      ],
+      "at_least_1_25": 3,
+      "greater_than_1": 4,
+      "criterion_met": true
+    },
+    {
+      "layer": 19,
+      "channels": [
+        0,
+        11,
+        268
+      ],
+      "ratios": [
+        0.8188232848760592,
+        0.9241163076565166,
+        0.8680322032960661,
+        1.0877389851960644
+      ],
+      "at_least_1_25": 0,
+      "greater_than_1": 1,
+      "criterion_met": false
+    },
+    {
+      "layer": 23,
+      "channels": [
+        2,
+        8,
+        12,
+        15,
+        26
+      ],
+      "ratios": [
+        0.9737028448008612,
+        0.9807102228581076,
+        0.8771535328102704,
+        0.7750453503587844
+      ],
+      "at_least_1_25": 0,
+      "greater_than_1": 0,
+      "criterion_met": false
+    }
+  ],
+  "problems": [
+    {
+      "id": "gsm8k_train_0",
+      "label": "GSM8K · 0"
+    },
+    {
+      "id": "gsm8k_train_2",
+      "label": "GSM8K · 2"
+    },
+    {
+      "id": "math_train_algebra_2",
+      "label": "MATH · 대수 2"
+    },
+    {
+      "id": "aime_1983-1",
+      "label": "AIME · 1983-1"
+    }
+  ],
+  "metrics": {
+    "authorship": "trusted deterministic postprocessing after the ten agent actions; not an additional agent action",
+    "hypothesis": "H3",
+    "criterion": "One fixed set has repetitive/productive share ratio >=1.25 in at least 3 pairs and >1 in all 4 pairs.",
+    "criterion_met": true,
+    "by_layer": {
+      "10": {
+        "ratios": [
+          1.6914562265354036,
+          1.19293763998708,
+          1.4026032984774268,
+          1.5868152076743671
+        ],
+        "at_least_1_25": 3,
+        "greater_than_1": 4,
+        "criterion_met": true
+      },
+      "19": {
+        "ratios": [
+          0.8188232848760592,
+          0.9241163076565166,
+          0.8680322032960661,
+          1.0877389851960644
+        ],
+        "at_least_1_25": 0,
+        "greater_than_1": 1,
+        "criterion_met": false
+      },
+      "23": {
+        "ratios": [
+          0.9737028448008612,
+          0.9807102228581076,
+          0.8771535328102704,
+          0.7750453503587844
+        ],
+        "at_least_1_25": 0,
+        "greater_than_1": 0,
+        "criterion_met": false
+      }
+    },
+    "pairs": [
+      {
+        "problem_id": "gsm8k_train_0",
+        "energy_shares": {
+          "10": {
+            "productive": 0.0017536947344123724,
+            "repetitive": 0.002966297877964158,
+            "ratio": 1.6914562265354036
+          },
+          "19": {
+            "productive": 0.1622273923529675,
+            "repetitive": 0.13283556630333412,
+            "ratio": 0.8188232848760592
+          },
+          "23": {
+            "productive": 0.05330222842443211,
+            "repetitive": 0.05190053145109487,
+            "ratio": 0.9737028448008612
+          }
+        },
+        "mean_logprob_repetitive_minus_productive": -0.8377675087221208
+      },
+      {
+        "problem_id": "gsm8k_train_2",
+        "energy_shares": {
+          "10": {
+            "productive": 0.00046516167509299763,
+            "repetitive": 0.0005549088708978775,
+            "ratio": 1.19293763998708
+          },
+          "19": {
+            "productive": 0.1420657476388034,
+            "repetitive": 0.1312852741524335,
+            "ratio": 0.9241163076565166
+          },
+          "23": {
+            "productive": 0.06380746580350789,
+            "repetitive": 0.0625766340081693,
+            "ratio": 0.9807102228581076
+          }
+        },
+        "mean_logprob_repetitive_minus_productive": -0.9522215320217993
+      },
+      {
+        "problem_id": "math_train_algebra_2",
+        "energy_shares": {
+          "10": {
+            "productive": 0.00043109646767425984,
+            "repetitive": 0.0006046573275218843,
+            "ratio": 1.4026032984774268
+          },
+          "19": {
+            "productive": 0.11830173219090441,
+            "repetitive": 0.10268971324741191,
+            "ratio": 0.8680322032960661
+          },
+          "23": {
+            "productive": 0.0909971669884407,
+            "repetitive": 0.07981848649963687,
+            "ratio": 0.8771535328102704
+          }
+        },
+        "mean_logprob_repetitive_minus_productive": -0.5925921163251324
+      },
+      {
+        "problem_id": "aime_1983-1",
+        "energy_shares": {
+          "10": {
+            "productive": 0.000712939505580703,
+            "repetitive": 0.0011313032496073037,
+            "ratio": 1.5868152076743671
+          },
+          "19": {
+            "productive": 0.11105642169549841,
+            "repetitive": 0.12080039943456762,
+            "ratio": 1.0877389851960644
+          },
+          "23": {
+            "productive": 0.0646044356167643,
+            "repetitive": 0.05007136743732661,
+            "ratio": 0.7750453503587844
+          }
+        },
+        "mean_logprob_repetitive_minus_productive": 0.05128134450604849
+      }
+    ],
+    "cautions": [
+      "Productive controls are authored correct solutions, not observed successful model generations.",
+      "Inputs are equal-length short excerpts, not full conversation replays.",
+      "Repetition is constructed and changes context content; this is a selectivity screen, not a causal intervention.",
+      "Column-weighted activation energy omits cross-channel interference and is only a descriptive proxy.",
+      "These diagnostic problems must not be reused for independent edit verification."
+    ]
+  },
+  "steps": [
+    {
+      "number": 1,
+      "title": "원본 모델 기준 측정",
+      "kind": "GPU",
+      "description": "연습 문제 6개 모두 토큰 한도 도달. 정답 0/6.",
+      "status": "완료"
+    },
+    {
+      "number": 2,
+      "title": "출력 분석 첫 시도",
+      "kind": "Python",
+      "description": "토크나이저 반환값 처리 오류로 분석 실패.",
+      "status": "오류"
+    },
+    {
+      "number": 3,
+      "title": "출력 분석 복구",
+      "kind": "Python",
+      "description": "오류 수정 후 6개 출력의 반복 패턴을 확인.",
+      "status": "복구"
+    },
+    {
+      "number": 4,
+      "title": "가중치 분포 검사",
+      "kind": "Python",
+      "description": "455개 텐서 검사. 미지원 형태 18개는 다음 단계에서 보완.",
+      "status": "완료"
+    },
+    {
+      "number": 5,
+      "title": "언어 모델 후보 탐색",
+      "kind": "Python",
+      "description": "합성곱 텐서 18개를 추가 검사하고 반복 전후 문맥을 추출.",
+      "status": "완료"
+    },
+    {
+      "number": 6,
+      "title": "내부 활성값 수집",
+      "kind": "GPU",
+      "description": "4개 입력·384토큰에서 모든 언어 블록의 활성값 수집.",
+      "status": "완료"
+    },
+    {
+      "number": 7,
+      "title": "확률·활성값 분석",
+      "kind": "Python",
+      "description": "이어쓰기 확률 비교 완료. 배열 차원 처리로 층별 비교는 미완료.",
+      "status": "부분 분석"
+    },
+    {
+      "number": 8,
+      "title": "층별 비교 완료",
+      "kind": "Python",
+      "description": "배치 차원을 처리하고 10·19·23번 층의 고정 후보를 추림.",
+      "status": "완료"
+    },
+    {
+      "number": 9,
+      "title": "독립 대조 입력 준비",
+      "kind": "Python",
+      "description": "새 연습 문제 4개로 정상 풀이·반복 문맥 8개 구성.",
+      "status": "완료"
+    },
+    {
+      "number": 10,
+      "title": "고정 후보 대조 진단",
+      "kind": "GPU",
+      "description": "8개 입력·768토큰 측정. 이후 호스트가 고정 공식으로 결과 집계.",
+      "status": "완료"
+    }
+  ]
+}

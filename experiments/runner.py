@@ -116,7 +116,7 @@ def editor_start(root, state):
         stop_editor(state)
     cmd = isolated()
     cmd.remove('--rm')
-    cmd += ['--detach', '--name', state['container'], '--memory', '96g', '--cpus', '2']
+    cmd += ['--detach', '--name', state['container'], '--memory', state.get('editor_memory', '96g'), '--cpus', '2']
     cmd += mount(root / 'assets/model', '/model') + mount(root / 'assets/practice', '/practice')
     cmd += mount(root / 'work', '/work', False) + [state['editor_image']]
     subprocess.run(cmd, check=True)
@@ -154,6 +154,12 @@ def snapshot(root, destination):
 def gpu_job(root, state, job, online=False):
     if not online and C.seal(job):
         return
+    if state.get('colab_session'):
+        try:
+            from .colab_backend import gpu_job as colab_job
+        except ImportError:
+            from colab_backend import gpu_job as colab_job
+        return colab_job(root, state, job, online)
     receipt = job / 'container.json'
     name = 'wsp-job-' + hashlib.sha256(str(job.resolve()).encode()).hexdigest()[:20]
     if receipt.exists():

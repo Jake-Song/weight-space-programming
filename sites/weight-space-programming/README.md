@@ -1,53 +1,69 @@
-# weight-space-programming — 로컬 실험 비교 웹페이지
+# weight-space-programming — 로컬 실험 대시보드
 
-외부 배포 없이 사용하는 정적 HTML/CSS/JavaScript 페이지입니다.
-
-저장소 루트에서 실행:
+외부 Sites 배포 없이 사용하는 정적 HTML/CSS/JavaScript 페이지입니다.
 
 ```sh
 python3 -m http.server 4173 --bind 127.0.0.1 --directory sites/weight-space-programming/dist
 ```
 
-브라우저에서 http://localhost:4173 을 엽니다. 종료는 실행 터미널에서 Ctrl+C입니다.
-첫 화면에 3D 모델, 바로 아래에 정확도·비용 비교를 표시합니다. 두 섹션을 한 페이지에 통합했습니다.
-
-현재 작업 환경에서는 세션 종료에 영향받지 않도록 `weight-space-programming.service` 사용자 서비스로 실행합니다.
-이 서비스는 재부팅 시 자동 시작하도록 등록하지 않은 임시 서비스입니다.
+브라우저에서 http://localhost:4173 을 엽니다. 현재는 대화 종료 후에도 볼 수 있도록
+`weight-space-programming.service` 사용자 서비스로 실행합니다.
+재부팅 시 자동 시작하도록 등록한 서비스는 아닙니다.
 
 ```sh
 systemctl --user status weight-space-programming.service
 systemctl --user stop weight-space-programming.service
 ```
 
-- 24개 레이어의 3D 모델과 수정된 15·19번 레이어 탐색
-- 6개 조건의 정답률·토큰 한도 도달률·평균 생성 토큰 차트
-- 조건 선택 및 차이·탐색적 95% 구간 표시
-- 전체 수치 표와 결과 JSON 다운로드
+## 화면 구성
 
-`dist/results.json`은 저장소의 `results/summary.json` 사본입니다.
-화면의 6개 조건 수치를 원본과 대조했습니다.
+- 첫 화면: 2026-11-17 독립 10단계 진단, GPU 3회·Python 7회·가중치 편집 0개.
+- 후보 층 선택: 10·19·23번 층의 4개 대조 쌍 비율, 고정 채널과 사전 판정 기준.
+- 3D 모델: 기본은 이번 진단 후보. 보기 전환으로 이전 15·19번 층 공개 편집을 확인.
+- 10단계 실행 기록: 오류와 부분 분석을 포함하며 각 항목을 펼쳐 상세 확인.
+- 이전 실험: 2026-11-16 공개 편집 재현의 6개 조건 정확도·비용 비교.
+
+이번 진단에서는 가중치를 수정하지 않았습니다. 10번 층의 후보 집합만 대조 기준을
+충족했지만, 합성된 짧은 문맥의 관찰이며 반복의 인과 원인이나 편집 효과를
+검증한 결과는 아닙니다. 이전 실험의 정확도 수치는 별도로 표시합니다.
+
+## 데이터와 파일
+
+- `dist/diagnostics.json`: 이번 실행의 집계·후보·단계 기록.
+- `dist/reports/`: `results/runs/ten-steps-20261117.md`와 상세 지표 JSON 사본.
+- 후보 비율은 `results/runs/ten-steps-20261117-metrics.json`에서 가져옵니다.
+- 고정 채널과 대조 설계는 `.sandbox/work/action-000009-controls/protocol.json`에 기록돼 있습니다.
+- `dist/results.json`: 이전 실험의 `results/summary.json` 사본.
+- `dist/diagnostic.js`, `dist/diagnostic.css`: 최신 진단 차트·진행 기록.
+- `dist/model-geometry.js`, `dist/model.js`: 브라우저에서 생성하는 3D 구조와 조작.
+- `dist/assets/model-config.json`, `model-metadata.json`: 고정 revision 모델 구조와 이전 편집 명세.
+
 Google Fonts 연결이 없으면 시스템 글꼴을 사용합니다.
+Three.js와 MIT 라이선스는 로컬에 포함합니다.
 
-## JavaScript 3D 모델
+## 3D 표시와 조작
 
-http://localhost:4173 에서 회전·확대하고 레이어를 선택할 수 있습니다.
-이전 `model.html` 주소는 같은 통합 페이지로 이동합니다.
-모든 3D 형태와 레이블을 브라우저에서 JavaScript로 생성합니다.
-Three.js 0.180.0과 필요한 모듈·MIT 라이선스를 로컬에 포함합니다.
+24개 텍스트 레이어를 입력에서 출력까지 수평으로 배치합니다. 드래그로 회전,
+휠·두 손가락으로 중심을 유지한 확대/축소, 레이어 선택, 간격 조절을 지원합니다.
+`처음 위치로`는 현재 실험 보기 안에서 회전·확대·간격·필터를 초기화합니다.
+`model.html`의 기존 주소도 통합 화면으로 이동합니다.
 
-- `dist/model-geometry.js`: 24개 레이어, attention·MLP, 수정된 열 64개씩, 카메라를 바라보는 레이블 생성
-- `dist/model.js`: 회전·줌·레이어 선택·간격 조절·초기 위치 복원
-- `dist/assets/model-config.json`: 실험과 동일한 모델 revision의 설정
-- `dist/assets/model-metadata.json`: 구조와 수정 명세
+이번 진단의 발광 블록은 L10의 3개, L19의 3개, L23의 5개 고정 후보 채널입니다.
+이전 공개 편집 보기에서는 L15·L19 각각 64개 수정 열을 표시합니다.
+층 인덱스는 0부터 시작하며, 블록 배치는 실제 열 인덱스를 재현하지 않습니다.
+색·크기·밝기도 실제 활성값을 나타내지 않습니다. 비전 인코더와 세부 잔차 연산은 생략했습니다.
+이전 Blender 산출물은 `archive/blender/`에 보관하며 페이지에서 사용하지 않습니다.
 
-입력에서 출력까지 왼쪽에서 오른쪽으로 배치했습니다.
-15번은 보라색, 19번은 민트색이며 인덱스는 0부터 시작합니다.
-확대·축소는 고정된 중심을 기준으로 작동합니다. 두 손가락 확대는 레이어 선택으로 처리하지 않습니다.
-`처음 위치로`를 누르면 회전·확대·간격·표시 조건을 초기 상태로 되돌립니다.
-JavaScript 모듈과 명세 로딩을 위해 위 HTTP 서버를 사용하세요.
+## 브라우저 검증
 
-모델은 텍스트 백본의 구조 모식도입니다. 비전 인코더·세부 정규화·잔차 연산은 생략했습니다.
-64개 발광 블록은 수정된 열 64개를 나타내며 실제 열 인덱스 위치를 재현하지 않습니다.
-간격·크기·밝기는 실제 파라미터 크기나 활성값을 나타내지 않습니다.
+실행 중인 로컬 서버와 Playwright/Chromium이 필요합니다.
+기본 경로를 사용할 수 없으면 모듈과 실행 파일을 지정합니다.
 
-이전 Blender 산출물은 `archive/blender/`에 보관하며 웹페이지에서는 사용하지 않습니다.
+```sh
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright \
+PLAYWRIGHT_CHROMIUM=/absolute/path/to/chrome \
+node scripts/check_model_viewer.cjs
+```
+
+원본 지표와 화면 수치, 기준 판정, 후보/편집 보기 전환, 실행 기록,
+기존 차트, 회전·확대·초기화, 모바일 너비와 JavaScript 오류를 확인합니다.

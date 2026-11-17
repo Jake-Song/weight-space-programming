@@ -191,10 +191,33 @@ python3 experiments/agent.py --steps 2
 코드는 CPU sandbox에서만, forward JSON은 신뢰된 GPU 작업기에서만 실행한다.
 Astra가 `stop`을 선택하면 실험을 일시 중단한다. 이 경우 `resume` 후 계속한다.
 
-자동 실행기는 현재 기본 Docker GPU backend를 사용한다. NVIDIA GPU와
-NVIDIA Container Toolkit이 있는 실행 머신이 필요하다. Colab 소규모 진단의
-결과는 가져올 수 있지만, `agent.py`가 Colab 세션을 자동 생성하거나 기존
-진단 스크립트를 50회 편집 실행기로 바꾸지는 않는다.
+자동 실행기는 기본적으로 Docker GPU backend를 사용한다. 로컬 GPU가 부족하면
+CPU 편집기는 로컬 Docker에 유지하고 GPU 작업만 전용 Colab 세션으로 보낼 수 있다.
+Colab에서 실행되는 코드는 신뢰된 작업기뿐이며, 편집기가 생성한 Python은
+로컬 CPU 컨테이너에서만 실행한다. Colab GPU 작업의 격리 경계는 VM이다.
+
+```sh
+colab new -s wsp-ten-steps --gpu A100
+docker build -f experiments/Dockerfile.editor -t wsp-editor:local .
+python3 experiments/runner.py init --budget 10
+python3 -m experiments.colab_backend setup --root .sandbox --session wsp-ten-steps
+python3 experiments/agent.py --steps 10
+python3 experiments/runner.py pause --note '10단계 실행 기록 보관'
+colab stop -s wsp-ten-steps
+colab sessions
+```
+
+`init`은 새 실험에만 사용한다. 각 GPU 작업의 원본 결과와 로그는 로컬 `jobs/`에
+내려받고 해시 검증 후 예산에 반영한다. 세션 생성과 종료는 자동 실행기 밖에서
+관리하며, 실패하거나 중단한 경우에도 결과를 회수한 뒤 해당 세션을 종료한다.
+Colab 소규모 진단의 결과는 별도로 가져올 수 있다.
+
+Colab VM이 사라졌다면 전용 세션을 새로 만든 뒤 같은 `--root`로 위의
+`colab_backend setup`을 다시 실행한다. 로컬에 남은 원래 데이터와 manifest를
+복원하고 누락된 고정 revision 가중치만 내려받아 검증한다. `init`은 반복하지
+않는다. `agent.py --steps N`은 미완료 작업부터 이어가므로, 총 10단계가 목표라면
+이미 완료한 단계 수를 빼고 N을 지정한다. 전송이 실패한 GPU 작업은 성공 결과가
+복구될 때까지 forward 예산에 포함되지 않는다.
 
 ### 멈추고 나중에 다시 시작
 

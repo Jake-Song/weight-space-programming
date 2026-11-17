@@ -9,7 +9,7 @@ const close=(a,b,message)=>{
   a.forEach((v,i)=>assert(Math.abs(v-b[i])<1e-8,`${message}: ${v} != ${b[i]}`));
 };
 (async()=>{
-  const browser=await chromium.launch({headless:true});
+  const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM||undefined,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   try{
     const page=await browser.newPage({viewport:{width:1440,height:1100},hasTouch:true});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -20,7 +20,8 @@ const close=(a,b,message)=>{
         window.readViewer=()=>({
           position:camera.position.toArray(),target:controls.target.toArray(),
           rotation:camera.quaternion.toArray(),zoom:camera.zoom,selected,spacing,isolate,
-          layerCount:layers.size,
+          layerCount:layers.size,view,
+          candidateCounts:[10,19,23].map(i=>{let count=0;layers.get(i).traverse(o=>{if(o.userData.component==='candidate_channels')count+=o.count;});return count;}),
           columnCounts:[15,19].map(i=>{let count=0;layers.get(i).traverse(o=>{if(o.userData.component==='edited_columns')count+=o.count;});return count;}),
           endpoints:[0,23].map(i=>layers.get(i).getWorldPosition(new THREE.Vector3()).toArray()),
           layer19:layers.get(19).getWorldPosition(new THREE.Vector3()).project(camera).toArray()
@@ -31,13 +32,44 @@ const close=(a,b,message)=>{
     await page.goto('http://127.0.0.1:4173/model.html',{waitUntil:'networkidle'});
     assert.equal(new URL(page.url()).pathname,'/','Old model URL forwards to the unified page');
     await page.waitForFunction(()=>document.querySelector('#viewport').dataset.ready==='true');
-    assert.deepEqual(await page.locator('main > section').evaluateAll(nodes=>nodes.map(n=>n.id)),['model','results']);
+    assert.deepEqual(await page.locator('main > section').evaluateAll(nodes=>nodes.map(n=>n.id)),['diagnostic','model','run-history','results']);
     assert.equal(await page.locator('#question,#methods,#takeaway,.model-notes,.sources,.hero').count(),0);
     const state=()=>page.evaluate(()=>window.readViewer());
+    await page.waitForFunction(()=>document.querySelector('#diagnostic').dataset.ready==='true');
+    const data=JSON.parse(fs.readFileSync(path.join(root,'diagnostics.json'),'utf8'));
+    const source=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../results/runs/ten-steps-20261117-metrics.json'),'utf8'));
+    for(const c of data.candidates){
+      assert.deepEqual(c.ratios,source.by_layer[c.layer].ratios);
+      assert.equal(c.criterion_met,c.ratios.every(r=>r>1)&&c.ratios.filter(r=>r>=1.25).length>=3);
+    }
+    assert.equal(await page.locator('.step-item').count(),10);
+    assert.equal((await state()).view,'diagnostic');
+    assert.deepEqual((await state()).candidateCounts,[3,3,5]);
+    assert.deepEqual((await state()).columnCounts,[0,0]);
+    assert.equal(await page.locator('#fact-a').innerText(),'0');
+    for(const candidate of data.candidates){
+      await page.locator(`[data-candidate="${candidate.layer}"]`).click();
+      assert.deepEqual(await page.locator('.ratio-value').allTextContents(),candidate.ratios.map(r=>r.toFixed(4)+'×'));
+      assert.equal(await page.locator('#candidate-verdict .verdict-badge').innerText(),candidate.criterion_met?'기준 충족':'기준 미충족');
+      assert.equal((await state()).selected,candidate.layer);
+      assert.equal(await page.locator('#fact-a').innerText(),'0');
+    }
+    await page.locator('[data-candidate="10"]').click();
+    await page.locator('.diagnostic-table summary').click();
+    assert.equal(await page.locator('#candidate-table tr').count(),3);
+    for(const asset of ['reports/ten-steps-20261117.md','reports/ten-steps-20261117-metrics.json'])assert((await page.request.get('http://127.0.0.1:4173/'+asset)).ok());
+    await page.locator('.step-item').nth(1).locator('summary').click();
+    assert.match(await page.locator('.step-item').nth(1).innerText(),/토크나이저/);
+    assert.equal(await page.locator('.step-item').nth(1).locator('.step-title').evaluate(e=>getComputedStyle(e).transform),'none');
+    await page.locator('#view-reset').click();
+    await page.evaluate(()=>scrollTo(0,0));
+    await page.screenshot({path:'/tmp/weight-space-diagnostic-desktop.png'});
+    await page.locator('[data-model-mode="published"]').click();
     const initial=await state();
     assert.equal(initial.layerCount,24);assert.deepEqual(initial.columnCounts,[64,64]);
     assert(initial.endpoints[1][0]-initial.endpoints[0][0]>10,'Layer progression is horizontal');
     assert.equal(initial.endpoints[1][1],initial.endpoints[0][1]);
+    await page.locator('#viewport canvas').scrollIntoViewIfNeeded();
     const box=await page.locator('#viewport canvas').boundingBox();
     await page.mouse.move(box.x+box.width*.43,box.y+box.height*.45);
     for(let n=0;n<3;n++){
@@ -86,10 +118,14 @@ const close=(a,b,message)=>{
     await page.locator('[data-focus="19"]').click();
     await page.locator('#view-isolate').click();
     await page.screenshot({path:'/tmp/weight-space-horizontal-detail.png',fullPage:true});
+    await page.locator('[data-model-mode="diagnostic"]').click();
+    assert.deepEqual((await state()).candidateCounts,[3,3,5]);
     for(const width of [390,768]){
       await page.setViewportSize({width,height:900});await page.locator('#view-reset').click();
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-      if(width===390)await page.screenshot({path:'/tmp/weight-space-horizontal-mobile.png',fullPage:true});
+      await page.locator('[data-candidate="19"]').click();
+      assert.equal(await page.locator('#candidate-verdict .verdict-badge').innerText(),'기준 미충족');
+      if(width===390){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:'/tmp/weight-space-diagnostic-mobile.png',fullPage:true});}
     }
     assert.deepEqual(errors,[]);
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'networkidle'});
@@ -108,6 +144,6 @@ const close=(a,b,message)=>{
     assert(!requests.some(url=>/\.(glb|blend|png)(?:\?|$)/.test(url)),'No baked model or Blender image requests');
     assert(!requests.some(url=>url.includes('GLTFLoader')),'No model loader dependency');
     assert.deepEqual(errors,[]);
-    console.log('PASS: unified page contains only model + results; old URL redirects; chart metrics, detail, comparison, table; 24 layers and 64+64 columns; zoom round trips, pinch, reset, desktop/mobile; no JS errors.');
+    console.log('PASS: current diagnostic ratios and verdicts, 10-step log, candidate markers, published edit toggle, historical charts, zoom/pinch/reset, desktop/mobile, no JS errors.');
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
