@@ -124,6 +124,7 @@ the differences from the complete published harness.
 
 
 The runner supports checkpoints, pause/resume, portable backups and persistent
-hypothesis/result links. `python3 experiments/agent.py --steps 3` runs up to three
-headless Astra(max) actions and continues from the saved experiment on its next
-invocation. See [중단한 실험 이어가기](experiments/README.md#중단한-실험-이어가기).
+hypothesis/result links. `python3 experiments/agent.py` runs headless Astra(max) until final submission,
+keeping a conversation for 40 turns and handing off on rollover or driver restart.
+Use `--steps 3` to cap an invocation at three actions; the next invocation continues
+from the saved experiment without resetting budgets. See [중단한 실험 이어가기](experiments/README.md#중단한-실험-이어가기).

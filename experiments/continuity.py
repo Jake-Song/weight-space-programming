@@ -234,7 +234,7 @@ def context(root):
         evidence.append(item)
     notes = root / 'work/notes.md'
     return dict(experiment=memory, budget=dict(total=state['budget'], used=state['used'],
-          python_runs=state['python_runs'], frozen=state['frozen']), hypotheses=hypotheses,
+          python_runs=state['python_runs'], python_budget=state.get('python_budget', 300), frozen=state['frozen']), hypotheses=hypotheses,
           practice_jobs=jobs, imported_evidence=evidence,
           agent_actions=[dict(id=p.parent.name, **read(p)) for p in sorted((root / 'agent').glob('action-*/state.json'))][-12:],
           python_actions=[dict(id=p.name.removesuffix('.intent.json'), intent=read(p),
@@ -253,7 +253,7 @@ def handoff(root):
     budget = data['budget']
     lines = ['# Experiment handoff', '', f"Experiment: {data['experiment']['id']}",
              f"Editor: gpt-6-astra / max. Phase: {data['experiment']['phase']}.",
-             f"Forward passes: {budget['used']}/{budget['total']}; Python: {budget['python_runs']}/300.", '',
+             f"Forward passes: {budget['used']}/{budget['total']}; Python: {budget['python_runs']}/{budget['python_budget']}.", '',
              '## Next step', '', data['experiment'].get('next_step') or 'Review hypotheses and practice results before selecting the next action.', '',
              '## Hypotheses', '']
     for h in data['hypotheses']:

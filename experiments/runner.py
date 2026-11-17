@@ -151,6 +151,33 @@ def snapshot(root, destination):
     return hashes
 
 
+def freeze(root, state):
+    """Freeze once; recover a submission persisted before a controller crash."""
+    if state['used'] != state['budget']:
+        raise ValueError('Use all forward passes before final submission, as in the original')
+    stop_editor(state)
+    manifest = root / 'submission.json'
+    destination = root / 'submission'
+    if manifest.exists():
+        expected = read(manifest)['hashes']
+        actual = {p.name: sha(p) for p in destination.iterdir()}
+        if actual != expected:
+            raise ValueError('Submission changed since freeze')
+    else:
+        stage = root / ('submission-' + uuid.uuid4().hex)
+        hashes = snapshot(root, stage)
+        if destination.exists():
+            # A crash after rename but before manifest: only accept the same edits.
+            if {p.name: sha(p) for p in destination.iterdir()} != hashes:
+                raise ValueError('Uncommitted submission differs from current edits')
+            shutil.rmtree(stage)
+        else:
+            stage.rename(destination)
+        write(manifest, {'hashes': hashes, 'created': time.time()})
+    state['frozen'] = True
+    write(root / 'state.json', state)
+
+
 def gpu_job(root, state, job, online=False):
     if not online and C.seal(job):
         return
@@ -208,7 +235,7 @@ def run_python(root, state, code, explanation, action_id=None):
         if result_path.exists():
             return read(result_path)
     else:
-        if state['python_runs'] >= 300 or not explanation.strip():
+        if state['python_runs'] >= state.get('python_budget', 300) or not explanation.strip():
             raise ValueError('Python budget exhausted or explanation missing')
         state['python_runs'] += 1
         write(root / 'state.json', state)
@@ -292,7 +319,9 @@ def main():
     sub = p.add_subparsers(dest='command', required=True)
     sub.add_parser('build')
     init = sub.add_parser('init')
-    init.add_argument('--budget', type=int, choices=[10, 25, 50], default=50)
+    init.add_argument('--budget', type=int, choices=[3, 10, 20, 25, 50], default=50)
+    init.add_argument('--python-budget', type=int, default=300)
+    init.add_argument('--smoke', action='store_true', help='Infrastructure smoke run; permits a 3-pass budget')
     for name in ('prepare', 'start', 'stop', 'status', 'freeze', 'evaluate', 'handoff', 'history'):
         sub.add_parser(name)
     code = sub.add_parser('python')
@@ -337,14 +366,18 @@ def main():
                             '-t', tag, str(REPO)], check=True)
         return
     if a.command == 'init':
+        if a.python_budget < 1:
+            raise ValueError('Python budget must be positive')
+        if a.budget == 3 and not a.smoke:
+            raise ValueError('A 3-pass budget requires --smoke')
         root.mkdir(parents=True, exist_ok=True)
         with locked(root):
             if (root / 'state.json').exists():
                 raise ValueError('Run already exists; choose a new --root')
             for directory in ('assets', 'work/edited', 'jobs', 'code'):
                 (root / directory).mkdir(parents=True, exist_ok=True)
-            write(root / 'state.json', dict(budget=a.budget, used=0, python_runs=0,
-                  frozen=False, container='wsp-' + uuid.uuid4().hex[:12],
+            write(root / 'state.json', dict(budget=a.budget, used=0, python_runs=0, python_budget=a.python_budget,
+                  frozen=False, smoke=a.smoke, container='wsp-' + uuid.uuid4().hex[:12],
                   editor_image=EDITOR, gpu_image=GPU))
             C.ensure(root)
             C.handoff(root)
@@ -420,15 +453,7 @@ def main():
             C.handoff(root)
             print(C.export_bundle(root, a.file, a.include_weights))
         elif a.command == 'freeze':
-            if state['frozen']:
-                raise ValueError('Already frozen')
-            if state['used'] != state['budget']:
-                raise ValueError('Use all forward passes before final submission, as in the original')
-            stop_editor(state)
-            hashes = snapshot(root, root / 'submission')
-            write(root / 'submission.json', {'hashes': hashes, 'created': time.time()})
-            state['frozen'] = True
-            write(root / 'state.json', state)
+            freeze(root, state)
         elif a.command == 'evaluate':
             if not state['frozen']:
                 raise ValueError('Freeze the final submission first')

@@ -10,8 +10,9 @@ The source harness was not released. This implementation follows the public
 [Experiment 8 setup](https://github.com/RikiyaT/lm_understand-logs/blob/4d09ba6d6a7e891dd8063974dfe81b3d78e3494f/exp8_math/README.md)
 and [initial prompt](https://github.com/RikiyaT/lm_understand-logs/blob/4d09ba6d6a7e891dd8063974dfe81b3d78e3494f/exp8_math/runs/p50c/turns/t001/prompt.txt).
 The core runner accepts explicit code blocks and forward requests. The optional
-`agent.py` driver invokes headless Astra(max) for a bounded number of actions and
-passes persistent hypotheses and results to each subsequent invocation. It does
+`agent.py` driver invokes headless Astra(max), resumes the same Codex conversation for up to
+40 turns, and hands off the task, full notebook, current edits and experiment
+records to a fresh conversation every 40 turns or on driver restart. It does
 not select or preload the published edit.
 
 ## Setup
@@ -48,7 +49,8 @@ The Python kernel provides `NAMES`, `load_original(name)`, `load(name)`,
 Variables persist until `stop`, timeout, crash or OOM. `/work` persists across
 kernel restarts. Use `start` after `stop` to restart a kernel. Give every code
 execution an explanation; code, explanation and output are archived outside the
-editor's writable mount. Each code execution costs one of 300 attempts, including
+editor's writable mount. Each code execution costs one attempt (default 300; configurable with
+`init --python-budget N` or the run state `python_budget`), including
 failed code blocks. A code call exceeding 900 seconds stops the kernel.
 
 Use only weight analysis and justified direct edits. Do not train, enable
@@ -116,9 +118,12 @@ preserved before rerunning. Final evaluation does not spend practice passes.
 Current scope differences from the released experiment: no generation-time
 activation capture, attention matrices, top-k teacher-forced alternatives or
 chat-form teacher-forced requests; use raw texts for teacher forcing. The other
-six final benchmarks and the original harness's 40-turn conversation policy are
-not implemented. The bounded `agent.py` driver uses fresh noninteractive turns
-with persistent experiment context instead. Unsupported fields are rejected instead of silently ignored.
+six final benchmarks are not implemented. The driver follows the 40-turn
+conversation/handoff policy, but uses structured JSON actions with hypothesis
+records instead of the original Markdown code-block interface. Explanations are
+required from the first action rather than introduced partway through a run.
+Infrastructure errors stop the driver with a resumable pending action; automatic
+provider retries are not implemented. Unsupported fields are rejected explicitly.
 This is the core two-benchmark weight-editing protocol, not a complete reproduction
 of all published tables. The original editor's discovery is not guaranteed.
 
@@ -189,7 +194,30 @@ python3 experiments/agent.py --steps 2
 3단계가 GPU 호출 3회를 뜻하지는 않는다. 실제 forward 예산과 Python 예산은
 각각 별도로 관리한다. Astra는 호스트 도구를 직접 사용하지 않으며, 반환한
 코드는 CPU sandbox에서만, forward JSON은 신뢰된 GPU 작업기에서만 실행한다.
-Astra가 `stop`을 선택하면 실험을 일시 중단한다. 이 경우 `resume` 후 계속한다.
+Astra의 `stop`이나 예산 소진 전 `submit`은 실험을 종료하지 않는다.
+명시적으로 일시 중단하려면 `runner.py pause`를 사용한다.
+
+원실험처럼 최종 제출까지 계속 실행하려면 단계 제한을 생략한다:
+
+```sh
+python3 experiments/runner.py resume  # 일시정지 상태인 기존 실험
+python3 experiments/agent.py
+python3 experiments/runner.py evaluate
+```
+
+실행기 한 번의 실행 안에서는 같은 Codex 대화를 40턴까지 이어간다.
+매 턴에는 직전 실행 결과와 남은 예산을 전달한다. 40턴 뒤 또는 실행기를
+재시작하면 과제, 전체 노트, 현재 편집 목록과 실험 기록으로 새 대화를 시작한다.
+`--steps N`은 운영상 선택할 수 있는 행동 수 제한이며, 예산을 초기화하지 않는다.
+모든 forward 예산을 사용한 뒤에도 최종 편집 선택을 위한 Python 실행이 가능하다.
+`submit`은 제출본과 해시를 고정하고 `final_answer.md`를 저장한다.
+최종 벤치마크 평가는 별도 명령으로 실행하며 편집자에게 반환하지 않는다.
+
+이 변경은 실행 루프를 맞춘 것이다. 기존 실행의 측정 기록은 유지되므로,
+이미 진행한 실험을 이어가는 것은 처음부터 원설정으로 수행한 독립 재현이 아니다.
+현재 파일의 `editor_memory` 같은 실행별 자원 설정도 그대로 적용된다.
+원설정(96 GiB CPU 메모리, Python 300회, forward 10/25/50회)으로 새로
+비교하려면 별도 `--root`에 `init`하고 자원을 준비한다.
 
 자동 실행기는 기본적으로 Docker GPU backend를 사용한다. 로컬 GPU가 부족하면
 CPU 편집기는 로컬 Docker에 유지하고 GPU 작업만 전용 Colab 세션으로 보낼 수 있다.
@@ -326,3 +354,19 @@ python3 experiments/agent.py --root /workspace/wsp-run --steps 2
 아직 받지 못한 GPU 결과가 있는 상태에서 Colab VM 자체가 삭제되면 그 VM의
 임시 파일은 복구할 수 없다. 로컬에 내려받은 결과·편집본·백업은 보존되며,
 사라진 미완료 계산만 새 실행 환경에서 다시 수행해야 한다.
+
+
+### 3-pass infrastructure smoke
+
+`init --budget 3 --smoke` creates an independent smoke run (3 is rejected without
+`--smoke`). For example, use `--root .sandbox/smoke-three-20261117` on each
+runner/agent invocation. The editor is instructed to use at most two practice
+items, 512 generated tokens, a short teacher-forced inspection, and a paired
+comparison before submitting after three successful calls. These small request
+sizes are prompt instructions, not additional validator limits. Smoke scores do
+not measure benchmark performance. A local 5 GiB editor memory override is a
+resource deviation from the original 96 GiB configuration.
+
+The runner also accepts `init --budget 20` for a user-requested independent
+20-pass run. This uses the normal protocol (`smoke=false`); 20 passes is an
+additional budget condition, not one of the original 10/25/50 runs.

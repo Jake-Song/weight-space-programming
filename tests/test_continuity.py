@@ -48,6 +48,28 @@ class RunTest(unittest.TestCase):
             self.success(self.root, self.state(), job)
         C.reconcile(self.root, self.state())
 
+    def test_three_pass_budget_requires_explicit_smoke(self):
+        other = Path(self.temporary.name) / 'smoke'
+        with patch('sys.argv', ['runner', '--root', str(other), 'init', '--budget', '3']):
+            with self.assertRaisesRegex(ValueError, 'requires --smoke'):
+                R.main()
+        with patch('sys.argv', ['runner', '--root', str(other), 'init', '--budget', '3', '--smoke']):
+            R.main()
+        self.assertEqual(C.read(other / 'state.json')['budget'], 3)
+        self.assertTrue(C.read(other / 'state.json')['smoke'])
+
+    def test_custom_python_budget_blocks_next_execution(self):
+        state = self.state()
+        state.update(python_budget=150, python_runs=150)
+        C.write(self.root / 'state.json', state)
+        with patch.object(R.subprocess, 'run') as execute:
+            with self.assertRaisesRegex(ValueError, 'Python budget exhausted'):
+                R.run_python(self.root, state, 'print(1)', 'budget check', 'over-budget')
+            execute.assert_not_called()
+        self.assertEqual(self.state()['python_runs'], 150)
+        self.assertEqual(C.context(self.root)['budget']['python_budget'], 150)
+        self.assertIn('"python_budget": 150', A.decision_prompt(self.root))
+
     def test_same_job_id_runs_once_and_refuses_changed_request(self):
         with patch.object(R,'gpu_job',side_effect=self.success) as gpu:
             self.cli('forward',self.request,'--id','measurement-1')
@@ -239,6 +261,58 @@ class RunTest(unittest.TestCase):
             A.run_steps(self.root,1,lambda *args: self.fail('must reuse the saved decision'))
         self.assertEqual(len(list((self.root/'agent').glob('action-*'))),1)
         self.assertEqual(self.state()['used'],1)
+
+    @staticmethod
+    def decision(kind):
+        return dict(kind=kind, hypothesis_id='', statement='', prediction='', parent='',
+                    explanation='Final evidence', code='', request_json='', notes='Report',
+                    next_step='', verdict='none', conclusion='')
+
+    def test_stop_and_early_submit_do_not_end_run(self):
+        decisions = iter([self.decision('stop'), self.decision('submit'), self.decision('note')])
+        A.run_steps(self.root, 3, lambda *args: next(decisions))
+        self.assertEqual(C.ensure(self.root)['phase'], 'active')
+        self.assertFalse(self.state()['frozen'])
+        self.assertIn('error', C.read(self.root / 'agent/action-000002/result.json'))
+        self.assertTrue((self.root / 'agent/action-000003/result.json').exists())
+
+    def test_budget_exhaustion_allows_final_choice_then_submit(self):
+        self.completed(10)
+        decisions = iter([self.decision('note'), self.decision('submit')])
+        with patch.object(R, 'stop_editor'):
+            A.run_steps(self.root, None, lambda *args: next(decisions))
+        self.assertTrue(self.state()['frozen'])
+        self.assertEqual(C.ensure(self.root)['phase'], 'submitted')
+        self.assertTrue((self.root / 'submission.json').exists())
+        self.assertIn('Final evidence', (self.root / 'final_answer.md').read_text())
+
+    def test_resume_submit_after_freeze_before_action_completion(self):
+        self.completed(10)
+        freeze = R.freeze
+        def interrupted(root, state):
+            freeze(root, state)
+            raise RuntimeError('interrupted after freeze')
+        with patch.object(R, 'stop_editor'), patch.object(R, 'freeze', side_effect=interrupted):
+            with self.assertRaisesRegex(RuntimeError, 'interrupted'):
+                A.run_steps(self.root, 1, lambda *args: self.decision('submit'))
+        with patch.object(R, 'stop_editor'):
+            A.run_steps(self.root, None, lambda *args: self.fail('must reuse submission decision'))
+        self.assertEqual(C.ensure(self.root)['phase'], 'submitted')
+        self.assertEqual(C.read(self.root / 'agent/action-000001/state.json')['status'], 'complete')
+
+    def test_continuation_receives_result_without_repeating_task(self):
+        prompts = []
+        class Planner:
+            needs_handoff = True
+            def __call__(inner, prompt, *args):
+                prompts.append(prompt)
+                inner.needs_handoff = False
+                return self.decision('note')
+        A.run_steps(self.root, 2, Planner())
+        self.assertIn('Context:', prompts[0])
+        self.assertIn('Previous action result:', prompts[1])
+        self.assertNotIn('Context:', prompts[1])
+
 
 
 class PilotResume(unittest.TestCase):
