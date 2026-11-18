@@ -377,3 +377,80 @@ resource deviation from the original 96 GiB configuration.
 The runner also accepts `init --budget 20` for a user-requested independent
 20-pass run. This uses the normal protocol (`smoke=false`); 20 passes is an
 additional budget condition, not one of the original 10/25/50 runs.
+
+### 한국어 사실 갱신 실험 (Colab CLI)
+
+로컬 CPU 편집기와 Colab GPU를 함께 사용한다. 전용 실행 디렉터리에 원본
+Qwen3.5-0.8B를 준비하면 연습 문항만 편집기에 마운트된다. 수학용 편집본은
+불러오지 않는다. 새 실행을 만들고 자동 편집기를 실행하는 예시는 다음과 같다.
+
+```sh
+docker build -f experiments/Dockerfile.editor -t wsp-editor:local .
+python3 experiments/runner.py --root .sandbox/fact-ko init --task fact_update_ko
+colab new -s wsp-fact-ko --gpu L4
+python3 -m experiments.colab_backend setup --root .sandbox/fact-ko --session wsp-fact-ko
+python3 experiments/agent.py --root .sandbox/fact-ko
+python3 experiments/runner.py --root .sandbox/fact-ko status
+```
+
+연습 120쌍에서 변경 적용과 유지 문항을 모두 맞힌 비율을 측정한다. 원본이
+95% 이상이면 첫 패스에서 종료한다. 그 외에는 활성값 진단 3회, 편집 후보
+채점 12회를 수행한다. `{"type":"score_choices","model":"edited"}` 요청은
+탐색 세트 전체의 thinking-off 응답 시작점에서 A/B 토큰 로그확률을 비교한다.
+동점은 오답이다. 개별 기록은 작업별 `output/*_choices.json`에 저장한다.
+
+탐색 직후 호스트가 상위 3개 스냅샷을 잠그고 선택 세트 80쌍에서 원본과
+각 후보를 한 번씩 채점한다. 동률이면 제출한 가중치 변화의 L2 노름이 작은
+후보를 택한다. 수동 실행에서는 16번째 패스 뒤 `freeze`가 이 단계를 수행한다.
+중단 후 같은 디렉터리에서 재실행하면 봉인한 결과를 재사용한다.
+
+`status`에 `frozen: true`가 기록되면 다음 명령으로 최종 평가한다.
+
+```sh
+python3 experiments/runner.py --root .sandbox/fact-ko evaluate
+```
+
+`fact-report.json`에는 세 분야의 합계 240쌍, 보존 대조 120문항에 대한
+원본·선택 편집본·무작위 방향 5개의 점수가 담긴다. 각 대조는 변경 위치와
+열별 변화량 노름을 원본 정밀도 변환 전에 일치시킨다. 난수 시드는 0–4다.
+성공 기준은 쌍 정확도 5%p 이상 개선, 분야별 문장 틀을 묶은 paired bootstrap
+95% 구간 하한이 0 초과, 보존 정확도 하락 3%p 이하다. 원본이 탐색 종료 기준을
+넘거나 최종 보고서를 로컬에서 확인한 뒤 `colab stop -s wsp-fact-ko`로 세션을 종료한다.
+
+
+영어 독립 편집 실험은 같은 명령에서 `--task fact_update_en`을 사용하고 별도
+실행 경로와 Colab 세션을 지정한다. 탐색·선택·최종 세트의 언어만 바꾸고
+각 사례의 ID, 상태, 정답, 보기와 기록 필드 순서, 패스 예산, 채점 방법을
+유지한다. 편집기는 원본 모델과 영어 탐색 세트에서 시작한다.
+
+### 한국어 폐쇄형 지식 주입 실험
+
+`knowledge_write.py`는 가상 회사 4곳에 같은 등록 코드 4개를 서로 다르게
+배정한 두 편집본을 만든다. 편집자는 배정표를 읽으며, 모델이 받는 질문에는
+회사명만 들어간다. 기존 Qwen3.5-0.8B의 마지막 MLP 출력 가중치 한 개에 회사별
+활성 방향과 코드 토큰의 출력 방향의 외적을 더한다. 최적화기와 역전파는 쓰지
+않는다. 편집 강도는 회사당 보정용 질문 2개에서 선택한 뒤 고정한다.
+
+```sh
+python3 experiments/knowledge_write.py /path/to/new/results
+```
+
+transformers 5.20.2와 CUDA가 필요하다. 결과의 `both_maps_correct`는 서로
+다른 두 편집본이 동일한 새 질문에 각자 배정된 코드를 모두 답한 횟수다
+(회사 4곳 × 새 표현 4개). 디코딩은 thinking-off, greedy, 최대 16토큰이며
+응답 전체에서 앞뒤 공백과 대소문자를 정규화해 채점한다. 근접 회사 16문항과
+사실·속성 대조 12문항, 두 개의 노름 일치 무작위 편집을 함께 보고한다.
+`protocol.json`, `selection.json`, `factors.safetensors`와 편집본별 응답이
+기록되어 같은 원본 가중치에 편집을 재현할 수 있다.
+
+후속 실험은 첫 실행의 결과 디렉터리를 입력으로 사용한다. 시작할 때 두 편집본의
+가중치 해시를 검증한다. 서로 다른 두 출력 디렉터리로 다음과 같이 실행한다.
+
+```sh
+python3 experiments/knowledge_write_ten.py /path/to/first/results /path/to/new/ten-pass-results
+```
+
+추가 예산 10회(활성 진단 2회, 후보 비교 6회, 최종 평가 2회)를 사용한 실행에서
+두 편집본이 각각 배정된 코드를 모두 맞힌 횟수는 기존 질문 10/16에서 16/16으로
+올랐다. 새 질문은 13/16이었다. 다른 회사에 주입 코드가 나온 횟수는 α에서
+5/16→9/16, β에서 5/16→6/16이었다. 토큰 생성까지 센 모델 호출은 73회였다.

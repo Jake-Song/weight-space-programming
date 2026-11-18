@@ -66,6 +66,31 @@ def decision_prompt(root):
     for path in sorted((root / 'assets/practice').glob('*.jsonl')):
         rows = [json.loads(line) for line in path.read_text().split('\n') if line.strip()]
         practice.extend(dict(id=r['id'], problem=r['problem'], source=r.get('source')) for r in rows[:8])
+    if state.get('task') in R.F.TASKS:
+        language = 'English' if state['task'] == 'fact_update_en' else 'Korean'
+        return 'TASK: Improve ' + language + """ fact updating by directly editing the original Qwen3.5-0.8B.
+Use only the recorded practice context. Do not use prior math edits, web or external tools.
+Pair accuracy requires BOTH the applied and retained outcomes to be correct. All choices are
+next-token A/B with thinking off. /practice/explore.jsonl contains the full labeled exploration set.
+The host spends pass 1 on original score_choices, passes 2–4 on original teacher_forced activation
+diagnostics, and passes 5–16 on edited score_choices over all 120 exploration pairs. The host
+automatically locks the three best distinct snapshots and runs selection after pass 16.
+Use at least three distinct nonempty edits. Record target tensor, update magnitude, rationale and
+expected pair behavior per candidate. Inspect original failures before choosing components.
+Use JSON {"type":"score_choices","model":"edited"} for a candidate, or model original for baseline.
+For diagnostics use {"type":"teacher_forced","model":"original","texts":["..."],
+"return":{"hidden_states":[4,8,12,16,20,24],"token_logprobs":false}}. mlp_act uses block indices 0..23. Use the same rendered prefix
+as score_choices with thinking disabled. tok is tokenizers.Tokenizer and has no apply_chat_template.
+Read /model/chat_template.jinja for the exact user-only prefix and /model/tokenizer_config.json for
+special tokens. The choice files contain user messages and scores. Use recorded outputs.
+Actions: python (CPU kernel NAMES, load, load_original, save_edit, drop_edit, edited, tok, np, torch);
+forward (request_json); note. No model forwards in Python, gradient training, optimizer, or fitting
+to a loss. Only block tensors and justified direct changes. /work/forward-<action-id>/ has outputs.
+Use python to inspect the saved choices, activation arrays and weights. Link each python/forward
+to hypothesis_id and explanation, giving statement and falsifiable prediction for new hypotheses.
+Use empty strings for irrelevant fields and verdict none unless assessing a hypothesis.
+Use Korean for notes and next_step. Take one action. Context:
+""" + json.dumps(data, ensure_ascii=False) + '\nPractice examples:\n' + json.dumps(practice, ensure_ascii=False)
     return '''TASK: Make Qwen3.5-0.8B better at mathematics by editing its weights directly.
 Diagnose a failure mechanism, identify responsible components and repair it with justified changes.
 The text model has 24 layers of width 1024, SwiGLU MLP width 3584, and full-attention
@@ -153,8 +178,19 @@ def execute(root, action, state):
         R.editor_start(root, state)
         result = R.run_python(root, state, decision['code'], decision['explanation'], name)
     elif decision['kind'] == 'forward':
-        job = R.run_forward(root, state, json.loads(decision['request_json']), name, hyp)
-        result = dict(job=job.name, scores=C.read(job / 'output/scores.json'))
+        req = json.loads(decision['request_json'])
+        result = None
+        if state.get('task') in R.F.TASKS:
+            # Let the editor correct malformed requests before spending a pass.
+            try:
+                R.F.validate_exploration(root, state, req, R.validate_request, hyp)
+                if state['used'] >= 4:
+                    R.F.validate_candidate(root, state, C.files(root / 'work/edited'))
+            except ValueError as exc:
+                result = dict(error=str(exc), forward_executed=False)
+        if result is None:
+            job = R.run_forward(root, state, req, name, hyp)
+            result = dict(job=job.name, scores=C.read(job / 'output/scores.json'))
     else:
         result = dict(note=decision['notes'])
     # Result is persisted before postprocessing; retries reuse the code/job receipt.
@@ -208,6 +244,13 @@ def run_steps(root, limit=None, planner=None):
             count += 1
             with R.locked(root):
                 state = C.reconcile(root, C.read(root / 'state.json'))
+                if state.get('task') in R.F.TASKS:
+                    if state.get('ceiling_reached'):
+                        C.handoff(root)
+                        break
+                    if state['used'] >= 16:
+                        R.F.select(root, state, R.gpu_job, R.freeze)
+                        break
                 require_driver_active(root, state)
                 C.handoff(root)
                 actions = sorted((root / 'agent').glob('action-*'))
