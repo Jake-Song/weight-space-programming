@@ -9,13 +9,15 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import uuid
 
 try:
-    from . import continuity as C
+    from . import continuity as C, fact_protocol as F
 except ImportError:
     import continuity as C
+    import fact_protocol as F
 
 REPO = Path(__file__).resolve().parents[1]
 EDITOR = 'wsp-editor:local'
@@ -151,7 +153,7 @@ def snapshot(root, destination):
     return hashes
 
 
-def freeze(root, state):
+def freeze(root, state, selected=None):
     """Freeze once; recover a submission persisted before a controller crash."""
     if state['used'] != state['budget']:
         raise ValueError('Use all forward passes before final submission, as in the original')
@@ -165,7 +167,13 @@ def freeze(root, state):
             raise ValueError('Submission changed since freeze')
     else:
         stage = root / ('submission-' + uuid.uuid4().hex)
-        hashes = snapshot(root, stage)
+        if selected is None:
+            hashes = snapshot(root, stage)
+        else:
+            shutil.copytree(selected / 'edits', stage)
+            hashes = C.files(stage)
+            if hashes != read(selected / 'edit_hashes.json'):
+                raise ValueError('Selected candidate snapshot changed')
         if destination.exists():
             # A crash after rename but before manifest: only accept the same edits.
             if {p.name: sha(p) for p in destination.iterdir()} != hashes:
@@ -204,6 +212,7 @@ def gpu_job(root, state, job, online=False):
     cmd = isolated() + ['--name', name]
     if online:
         cmd[cmd.index('none')] = 'bridge'
+        cmd += ['-e', 'WSP_TASK=' + state.get('task', 'math')]
     else:
         cmd += ['--gpus', 'all', '-e', 'HF_HUB_OFFLINE=1', '-e', 'TRANSFORMERS_OFFLINE=1']
     cmd += mount(root / 'assets', '/assets', not online) + mount(job, '/job', False)
@@ -217,6 +226,8 @@ def gpu_job(root, state, job, online=False):
 
 
 def require_active(root, state):
+    if state.get('ceiling_reached') or (root / 'fact-candidates.json').exists():
+        raise ValueError('Fact-update exploration is closed')
     if state['frozen'] or C.ensure(root)['phase'] == 'paused':
         raise ValueError('Run frozen or paused; resume before changing the experiment')
 
@@ -274,23 +285,33 @@ def run_forward(root, state, req, job_id=None, hypothesis_id=None):
         if C.seal(job):
             C.reconcile(root, state)
             return job
+        if state.get('task') in F.TASKS:
+            F.validate_exploration(root, state, req, validate_request, intent.get('hypothesis'))
+            if state['used'] >= 4:
+                F.validate_candidate(root, state, read(job / 'edit_hashes.json'))
     else:
         if hypothesis_id and not (root / 'hypotheses' / (C.identifier(hypothesis_id) + '.json')).exists():
             raise ValueError('Unknown hypothesis ID')
-        practice = {json.loads(line)['id'] for path in (root / 'assets/practice').glob('*.jsonl')
-                    for line in path.read_text().split('\n') if line.strip()}
-        validate_request(req, practice)
+        if state.get('task') not in F.TASKS:
+            practice = {json.loads(line)['id'] for path in (root / 'assets/practice').glob('*.jsonl')
+                        for line in path.read_text().split('\n') if line.strip()}
+            validate_request(req, practice)
+        else:
+            F.validate_exploration(root, state, req, validate_request, hypothesis_id)
         if state['used'] >= state['budget']:
             raise ValueError('Forward budget exhausted')
-        stage = root / 'jobs' / ('.tmp-' + uuid.uuid4().hex)
-        stage.mkdir()
-        hashes = snapshot(root, stage / 'edits')
-        write(stage / 'request.json', req)
-        write(stage / 'edit_hashes.json', hashes)
-        C.write(stage / 'intent.json', dict(id=name, status='pending', hypothesis=hypothesis_id,
-                created=time.time(), asset_manifest_sha256=sha(root / 'assets/manifest.json')
-                if (root / 'assets/manifest.json').exists() else None))
-        stage.rename(job)
+        with tempfile.TemporaryDirectory(dir=root / 'jobs', prefix='.tmp-') as tmp:
+            stage = Path(tmp) / 'job'
+            stage.mkdir()
+            hashes = snapshot(root, stage / 'edits')
+            if state.get('task') in F.TASKS and state['used'] >= 4:
+                F.validate_candidate(root, state, hashes)
+            write(stage / 'request.json', req)
+            write(stage / 'edit_hashes.json', hashes)
+            C.write(stage / 'intent.json', dict(id=name, status='pending', hypothesis=hypothesis_id,
+                    created=time.time(), asset_manifest_sha256=sha(root / 'assets/manifest.json')
+                    if (root / 'assets/manifest.json').exists() else None))
+            stage.rename(job)
         C.event(root, 'forward_requested', job=name, hypothesis=hypothesis_id)
     if state['used'] >= state['budget']:
         raise ValueError('Forward budget exhausted')
@@ -319,7 +340,8 @@ def main():
     sub = p.add_subparsers(dest='command', required=True)
     sub.add_parser('build')
     init = sub.add_parser('init')
-    init.add_argument('--budget', type=int, choices=[3, 10, 20, 25, 50], default=50)
+    init.add_argument('--task', choices=['math', *F.TASKS], default='math')
+    init.add_argument('--budget', type=int, choices=[3, 10, 20, 25, 50])
     init.add_argument('--python-budget', type=int, default=300)
     init.add_argument('--smoke', action='store_true', help='Infrastructure smoke run; permits a 3-pass budget')
     for name in ('prepare', 'start', 'stop', 'status', 'freeze', 'evaluate', 'handoff', 'history'):
@@ -366,6 +388,10 @@ def main():
                             '-t', tag, str(REPO)], check=True)
         return
     if a.command == 'init':
+        if a.budget is None:
+            a.budget = 20 if a.task in F.TASKS else 50
+        if a.task in F.TASKS and (a.budget != 20 or a.smoke):
+            raise ValueError('Fact-update experiments use the 20-pass protocol')
         if a.python_budget < 1:
             raise ValueError('Python budget must be positive')
         if a.budget == 3 and not a.smoke:
@@ -376,7 +402,7 @@ def main():
                 raise ValueError('Run already exists; choose a new --root')
             for directory in ('assets', 'work/edited', 'jobs', 'code'):
                 (root / directory).mkdir(parents=True, exist_ok=True)
-            write(root / 'state.json', dict(budget=a.budget, used=0, python_runs=0, python_budget=a.python_budget,
+            write(root / 'state.json', dict(task=a.task, budget=a.budget, used=0, python_runs=0, python_budget=a.python_budget,
                   frozen=False, smoke=a.smoke, container='wsp-' + uuid.uuid4().hex[:12],
                   editor_image=EDITOR, gpu_image=GPU))
             C.ensure(root)
@@ -453,7 +479,10 @@ def main():
             C.handoff(root)
             print(C.export_bundle(root, a.file, a.include_weights))
         elif a.command == 'freeze':
-            freeze(root, state)
+            if state.get('task') in F.TASKS:
+                F.select(root, state, gpu_job, freeze)
+            else:
+                freeze(root, state)
         elif a.command == 'evaluate':
             if not state['frozen']:
                 raise ValueError('Freeze the final submission first')
@@ -461,6 +490,9 @@ def main():
             actual = {p.name: sha(p) for p in (root / 'submission').iterdir()}
             if actual != expected:
                 raise ValueError('Submission changed since freeze')
+            if state.get('task') in F.TASKS:
+                print(F.evaluate(root, state, gpu_job))
+                return
             for model in ('original', 'edited'):
                 for bench, n in [('math500', 4), ('gsm8k', 2)]:
                     job = root / 'jobs' / f'eval-{model}-{bench}'

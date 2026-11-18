@@ -2,6 +2,7 @@
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -37,12 +38,13 @@ def jsonl(path):
 
 def prepare():
     from huggingface_hub import snapshot_download
-    from datasets import load_dataset
+    task = os.environ.get('WSP_TASK', 'math')
     model = ASSETS / 'model'
     manifest_path = ASSETS / 'manifest.json'
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())
-        if manifest['model_revision'] != REVISION or manifest['source_commit'] != SOURCE:
+        if (manifest['model_revision'] != REVISION or manifest['source_commit'] != SOURCE
+                or manifest.get('task', 'math') != task):
             raise ValueError('Existing assets belong to another protocol')
         missing = [rel for rel in manifest['files'] if not (ASSETS / rel).exists()]
         if any(not rel.startswith('model/') or not rel.endswith('.safetensors') for rel in missing):
@@ -57,6 +59,23 @@ def prepare():
         return
     snapshot_download('Qwen/Qwen3.5-0.8B', revision=REVISION, local_dir=model,
                       allow_patterns=['*.json', '*.jinja', '*.safetensors', 'tokenizer*', 'vocab*', 'merges*'])
+    if task in ('fact_update_ko', 'fact_update_en'):
+        if task == 'fact_update_en':
+            import fact_update_english as fact
+        else:
+            import fact_update_ko as fact
+        fact.prepare(ASSETS)
+        datasets = dict(explore_pairs=120, selection_pairs=80, final_pairs=240, preservation=120)
+    else:
+        datasets = prepare_math()
+    write(ASSETS / 'manifest.json', dict(task=task, source_commit=SOURCE, model_revision=REVISION,
+          datasets=datasets, files={str(p.relative_to(ASSETS)): digest(p)
+          for p in sorted(ASSETS.rglob('*')) if p.is_file() and '.cache' not in p.parts}))
+    print('PREPARED', flush=True)
+
+
+def prepare_math():
+    from datasets import load_dataset
     practice = ASSETS / 'practice'
     practice.mkdir(exist_ok=True)
     for name, expected in [('gsm8k_train', 7469), ('math_train', 7275), ('aime', 714)]:
@@ -80,13 +99,10 @@ def prepare():
     tests = {norm(r['problem']) for p in bench.glob('*.jsonl') for r in jsonl(p)}
     if any(norm(r['problem']) in tests for p in practice.glob('*.jsonl') for r in jsonl(p)):
         raise ValueError('Exact normalized practice/test contamination found')
-    write(ASSETS / 'manifest.json', dict(source_commit=SOURCE, model_revision=REVISION,
-          datasets=datasets, files={str(p.relative_to(ASSETS)): digest(p)
-          for p in sorted(ASSETS.rglob('*')) if p.is_file() and '.cache' not in p.parts}))
-    print('PREPARED', flush=True)
+    return datasets
 
 
-def checkpoint(model):
+def checkpoint(model, random_seed=None):
     """Validate edits independently of save_edit: editor can write arbitrary files."""
     import numpy as np
     import torch
@@ -101,6 +117,7 @@ def checkpoint(model):
     for path in sorted(base.glob('*.safetensors')):
         with safe_open(path, framework='pt', device='cpu') as f:
             tensors.update({name: f.get_tensor(name) for name in f.keys()})
+    rng = np.random.default_rng(random_seed) if random_seed is not None else None
     audit = []
     for path in sorted((JOB / 'edits').glob('*.npy')):
         name = path.stem
@@ -115,8 +132,11 @@ def checkpoint(model):
         scale = (x.double() * original).sum() / denom if denom else torch.tensor(0.)
         if torch.allclose(x, original * scale.float(), atol=1e-7, rtol=1e-5):
             raise ValueError(f'Whole-tensor scaling forbidden: {name}')
+        if rng is not None:
+            x = randomized_edit(original, x, rng)
         updated = x.to(tensors[name].dtype)
-        audit.append(dict(name=name, changed_entries=int((updated != tensors[name]).sum()),
+        audit.append(dict(name=name, delta_l2_sq=(x.double()-original).square().sum().item(),
+                          evaluated_delta_l2_sq=(updated.double()-original).square().sum().item(), changed_entries=int((updated != tensors[name]).sum()),
                           submitted_sha256=digest(path),
                           evaluated_sha256=hashlib.sha256(updated.view(torch.uint8).numpy().tobytes()).hexdigest()))
         tensors[name] = updated
@@ -126,6 +146,55 @@ def checkpoint(model):
     save_file(tensors, out / 'model.safetensors', metadata={'format': 'pt'})
     write(JOB / 'output/edit_audit.json', audit)
     return out
+
+
+def randomized_edit(original, edited, rng):
+    """Match nonzero support and column update norms before dtype rounding."""
+    import torch
+    delta = (edited.double() - original).reshape(original.shape[0], -1)
+    noise = torch.from_numpy(rng.standard_normal(tuple(delta.shape))) * (delta != 0)
+    lengths = noise.norm(dim=0)
+    lengths[lengths == 0] = 1
+    return (original + (noise * (delta.norm(dim=0) / lengths)).reshape_as(original)).float()
+
+
+def choice_tokens(tok, user_text):
+    prefix = tok.apply_chat_template([dict(role='user', content=user_text)], tokenize=False,
+                                     add_generation_prompt=True, enable_thinking=False)
+    ids = tok.encode(prefix, add_special_tokens=False)
+    alternatives = []
+    for letter in 'AB':
+        full = tok.encode(prefix + letter, add_special_tokens=False)
+        if full[:-1] != ids:
+            raise ValueError('Choice must append exactly one token to the rendered prefix')
+        alternatives.append(full[-1])
+    if alternatives[0] == alternatives[1]:
+        raise ValueError('Indistinguishable choice tokens')
+    return ids, alternatives
+
+
+def score_choices(req, ckpt, arm):
+    import torch
+    import fact_update_ko as fact
+    from transformers import AutoModelForImageTextToText, AutoTokenizer
+    split = req.get('split', 'explore')
+    folder = 'practice' if split == 'explore' else 'bench'
+    rows = jsonl(ASSETS / folder / (split + '.jsonl'))
+    tok = AutoTokenizer.from_pretrained(ckpt, local_files_only=True)
+    model = AutoModelForImageTextToText.from_pretrained(ckpt, dtype=torch.bfloat16,
+                                                       local_files_only=True).cuda().eval()
+    with torch.inference_mode():
+        for row in rows:
+            ids, choices = choice_tokens(tok, row['problem'])
+            logits = model(input_ids=torch.tensor([ids], device='cuda'), use_cache=False).logits[0,-1]
+            a,b = logits.float().log_softmax(dim=-1)[choices].tolist()
+            if not all(map(math.isfinite, (a,b))):
+                raise ValueError('Non-finite choice probability')
+            # Ties supply no evidence for either answer.
+            pred = 'A' if a > b else 'B' if b > a else None
+            row.update(logp_A=a, logp_B=b, prediction=pred, correct=pred == row['answer'])
+    write(JOB / f'output/{arm}_choices.json', rows)
+    return fact.summary(rows)
 
 
 def item_seed(identity):
@@ -257,10 +326,13 @@ def teacher_forced(req, ckpt):
 
 
 def identity():
-    return dict(request_sha256=digest(JOB / 'request.json'),
+    result = dict(request_sha256=digest(JOB / 'request.json'),
                 asset_manifest_sha256=digest(ASSETS / 'manifest.json'),
                 edits={p.name: digest(p) for p in sorted((JOB / 'edits').glob('*.npy'))},
                 worker_sha256=digest(__file__))
+    if json.loads((ASSETS / 'manifest.json').read_text()).get('task') in ('fact_update_ko', 'fact_update_en'):
+        result['task_sha256'] = digest(Path(__file__).with_name('fact_update_ko.py'))
+    return result
 
 
 def arm_complete(model):
@@ -324,7 +396,8 @@ def run():
           model_revision=REVISION, input_identity=expected,
           asset_manifest_sha256=digest(ASSETS / 'manifest.json'),
           versions={p: importlib.metadata.version(p) for p in
-                    ['torch', 'vllm', 'transformers', 'datasets', 'safetensors', 'math-verify']}))
+                    (['torch', 'transformers', 'safetensors'] if manifest.get('task') in ('fact_update_ko', 'fact_update_en') else
+                     ['torch', 'vllm', 'transformers', 'datasets', 'safetensors', 'math-verify'])}))
 
 
 if __name__ == '__main__':
@@ -336,9 +409,11 @@ if __name__ == '__main__':
         if not arm_complete(model):
             # If raw responses survived a grading crash, avoid rebuilding the model.
             raw_saved = (JOB / f'output/{model}_raw.json').exists()
-            ckpt = ASSETS / 'model' if raw_saved else checkpoint(model)
+            ckpt = ASSETS / 'model' if raw_saved else checkpoint(model, req.get('random_seed'))
             if req['type'] == 'generate':
                 generate(req, ckpt, model)
+            elif req['type'] == 'score_choices':
+                write(JOB / f'output/{model}_scores.json', score_choices(req, ckpt, model))
             else:
                 write(JOB / f'output/{model}_scores.json', teacher_forced(req, ckpt))
             finish_arm(model)

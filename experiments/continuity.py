@@ -121,6 +121,13 @@ def reconcile(root, state):
             # Work copies are disposable views; trusted outputs remain outside /work.
             if not destination.exists():
                 shutil.copytree(job / 'output', destination)
+    if state.get('task') in ('fact_update_ko', 'fact_update_en'):
+        for job in (root / 'jobs').glob('forward-*'):
+            if (job / 'result_manifest.json').exists() and read(job / 'request.json')['type'] == 'score_choices':
+                score = read(job / 'output/scores.json').get('original')
+                if score and score['pair_accuracy'] >= .95:
+                    state['ceiling_reached'] = True
+        completed += sum(seal(p) for p in (root / 'jobs').glob('selection-*'))
     state['used'] = completed
     write(root / 'state.json', state)
     ensure(root)

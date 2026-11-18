@@ -44,7 +44,7 @@ def sha(path):
         return hashlib.file_digest(handle, 'sha256').hexdigest()
 
 
-def remote_job(base, name, prepare=False):
+def remote_job(base, name, prepare=False, task='math'):
     base = Path(base)
     job = base / 'jobs' / name
     job.mkdir(parents=True, exist_ok=True)
@@ -62,7 +62,7 @@ def remote_job(base, name, prepare=False):
                 with tarfile.open(archive) as incoming:
                     incoming.extractall(job, filter='data')
                 receipt.write_text(digest)
-        env = dict(os.environ, WSP_ASSETS=str(assets), WSP_JOB=str(job),
+        env = dict(os.environ, WSP_TASK=task, WSP_ASSETS=str(assets), WSP_JOB=str(job),
                    VLLM_ENABLE_V1_MULTIPROCESSING='1')
         if not prepare:
             env.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1')
@@ -104,7 +104,7 @@ def gpu_job(root, state, job, online=False):
     command = ['colab', 'ssh', '-s', session, '--', 'python3', base + '/colab_backend.py',
                'remote', '--root', base, '--job', job.name]
     if online:
-        command.append('--prepare')
+        command.extend(['--prepare', '--task', state.get('task', 'math')])
     call(*command)
     archive = job / 'remote-results.tar.gz'
     download(session, remote + '.tar.gz', archive)
@@ -118,6 +118,8 @@ def gpu_job(root, state, job, online=False):
         error = None
         if provenance['input_identity']['worker_sha256'] != state['colab_worker_sha256']:
             error = 'Remote worker changed'
+        if state.get('task') in ('fact_update_ko', 'fact_update_en') and provenance['input_identity'].get('task_sha256') != state['colab_task_sha256']:
+            error = 'Remote task source changed'
         if provenance['asset_manifest_sha256'] != sha(root / 'assets/manifest.json'):
             error = 'Remote and local assets differ'
         if error:
@@ -151,14 +153,28 @@ def setup(root, session):
         if state.get('colab_worker_sha256', worker_hash) != worker_hash:
             raise ValueError('Worker changed; restore its original source')
         state.update(colab_session=session, colab_root=base, colab_worker_sha256=worker_hash)
+        fact_task = state.get('task') in ('fact_update_ko', 'fact_update_en')
+        if fact_task:
+            task_hash = sha(R.REPO / 'experiments/fact_update_ko.py')
+            if task_hash != state.get('colab_task_sha256', task_hash):
+                raise ValueError('Fact-update task source changed')
+            state['colab_task_sha256'] = task_hash
         C.write(root / 'state.json', state)
         call('colab', 'ssh', '-s', session, '--', 'mkdir', '-p', base)
-        for src, target in [('experiments/worker.py', 'worker.py'),
-                            ('experiments/colab_backend.py', 'colab_backend.py'),
-                            ('results/vendor/code/mathqa.py', 'mathqa.py'),
-                            ('scripts/setup_colab.py', 'setup.py')]:
+        sources = [('experiments/worker.py', 'worker.py'), ('experiments/colab_backend.py', 'colab_backend.py')]
+        if fact_task:
+            sources.append(('experiments/fact_update_ko.py', 'fact_update_ko.py'))
+            if state['task'] == 'fact_update_en':
+                sources.append(('experiments/fact_update_english.py', 'fact_update_english.py'))
+        else:
+            sources.extend([('results/vendor/code/mathqa.py', 'mathqa.py'), ('scripts/setup_colab.py', 'setup.py')])
+        for src, target in sources:
             call('colab', 'upload', '-s', session, R.REPO / src, base + '/' + target)
-        call('colab', 'ssh', '-s', session, '--', 'python3', base + '/setup.py')
+        if fact_task:
+            call('colab', 'ssh', '-s', session, '--', 'python3', '-m', 'pip', 'install', '-q',
+                 'transformers==5.20.2', 'safetensors')
+        else:
+            call('colab', 'ssh', '-s', session, '--', 'python3', base + '/setup.py')
         # A replacement VM receives the original data snapshot and manifest;
         # prepare() downloads only missing pinned weights and verifies hashes.
         manifest_path = root / 'assets/manifest.json'
@@ -191,11 +207,12 @@ if __name__ == '__main__':
     parser.add_argument('--session')
     parser.add_argument('--job')
     parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--task', choices=['math', 'fact_update_ko', 'fact_update_en'], default='math')
     args = parser.parse_args()
     if args.command == 'remote':
         if not args.job or Path(args.job).name != args.job:
             parser.error('A single job directory name is required')
-        remote_job(args.root, args.job, args.prepare)
+        remote_job(args.root, args.job, args.prepare, args.task)
     else:
         if not args.session:
             parser.error('--session is required')
